@@ -1,0 +1,46 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# ZenX AI聊天应用 文档
+
+此文档目录包含ZenX AI聊天应用的完整设计和开发文档。ZenX是一个使用Flutter开发的多API提供商AI聊天应用，采用SwiftUI风格设计。
+
+## 文档索引
+
+1. [development_plan.md](mdc:docs/development_plan.md) - 项目整体开发计划和架构设计
+2. [ai_development_guide.md](mdc:docs/ai_development_guide.md) - 如何使用AI辅助零基础开发
+3. [api_integration.md](mdc:docs/api_integration.md) - 各AI提供商API的集成方案
+4. [ui_design_guide.md](mdc:docs/ui_design_guide.md) - SwiftUI风格的UI设计规范
+5. [functional_spec.md](mdc:docs/functional_spec.md) - 功能详情介绍
+
+## 项目简介
+
+ZenX是一个允许用户通过各大厂商API进行AI聊天的应用，具有以下特点：
+
+- 支持多家AI服务商API (OpenAI, Claude, Gemini等)
+- 简洁优雅的SwiftUI风格界面
+- 流畅的消息流式响应
+- 历史对话管理
+- 安全的API密钥存储
+
+## 开发方法
+
+本项目采用AI辅助开发方法，通过结构化的模块开发和代码生成，使零基础开发者能够完成Flutter应用开发。
+
+## 文档维护
+
+此文档将随着项目开发持续更新。每个文档文件关注特定领域，并提供详细的实现指南和示例代码。
+
+## 目录结构
+
+```
+docs/
+├── README.md              # 文档主页
+├── development_plan.md    # 开发计划文档
+├── ai_development_guide.md # AI辅助开发指南
+├── api_integration.md     # API集成文档
+├── ui_design_guide.md     # UI设计指南
+└── images/                # 文档图片资源
+``` 
