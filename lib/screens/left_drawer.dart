@@ -3,6 +3,7 @@ import 'package:zenx/components/assistant_item.dart';
 import 'package:zenx/models/assistant.dart';
 import 'package:zenx/models/chat_session.dart';
 import 'package:zenx/utils/constants.dart';
+import 'package:zenx/screens/settings_screen.dart';
 
 class LeftDrawer extends StatefulWidget {
   const LeftDrawer({Key? key}) : super(key: key);
@@ -187,8 +188,11 @@ class _LeftDrawerState extends State<LeftDrawer> with SingleTickerProviderStateM
         leading: Icon(Icons.settings),
         title: Text('设置'),
         onTap: () {
-          // TODO: 导航到设置页面
           Navigator.pop(context);
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => SettingsScreen()),
+          );
         },
       ),
     );
