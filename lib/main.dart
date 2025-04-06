@@ -1,18 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zenx/screens/chat_screen.dart';
 import 'package:zenx/screens/left_drawer.dart';
 import 'package:zenx/screens/right_drawer.dart';
 import 'package:zenx/utils/constants.dart';
+import 'package:zenx/states/settings_provider.dart';
+import 'package:zenx/states/assistant_provider.dart';
+import 'package:zenx/states/chat_provider.dart';
 
 void main() {
-  runApp(const ZenXApp());
+  runApp(
+    // Enable Riverpod for the entire app
+    const ProviderScope(
+      child: ZenXApp(),
+    ),
+  );
 }
 
-class ZenXApp extends StatelessWidget {
+class ZenXApp extends ConsumerWidget {
   const ZenXApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Get theme mode from settings provider
+    final themeMode = ref.watch(themeModeProvider);
+    
     return MaterialApp(
       title: 'ZenX AI聊天',
       theme: ThemeData(
@@ -42,35 +54,51 @@ class ZenXApp extends StatelessWidget {
           centerTitle: true,
         ),
       ),
-      themeMode: ThemeMode.system, // 根据系统设置切换明暗主题
+      themeMode: themeMode, // Use theme mode from settings
       debugShowCheckedModeBanner: false,
       home: const MainScreen(),
     );
   }
 }
 
-class MainScreen extends StatefulWidget {
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  _MainScreenState createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  String _currentAssistantName = '通用助手';
-  String _currentSessionTitle = '新对话';
+  
+  @override
+  void initState() {
+    super.initState();
+    // 初始化欢迎消息
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final currentAssistant = ref.read(currentAssistantProvider);
+      addAssistantWelcomeMessage(
+        ref, 
+        currentAssistant.name, 
+        currentAssistant.description
+      );
+    });
+  }
   
   @override
   Widget build(BuildContext context) {
+    // 使用Provider获取当前会话标题和助手
+    final currentSessionTitle = ref.watch(currentSessionTitleProvider);
+    final currentAssistant = ref.watch(currentAssistantProvider);
+    
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
         title: Column(
           children: [
-            Text(_currentSessionTitle),
+            Text(currentSessionTitle),
             Text(
-              _currentAssistantName,
+              currentAssistant.name,
               style: AppTheme.captionTextStyle,
             ),
           ],
@@ -82,7 +110,7 @@ class _MainScreenState extends State<MainScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.add),
-            onPressed: _createNewChat,
+            onPressed: () => createNewSession(ref),
           ),
           IconButton(
             icon: Icon(Icons.settings),
@@ -107,16 +135,5 @@ class _MainScreenState extends State<MainScreen> {
       // 向左滑动，打开右抽屉
       _scaffoldKey.currentState!.openEndDrawer();
     }
-  }
-  
-  void _createNewChat() {
-    setState(() {
-      _currentSessionTitle = '新对话';
-    });
-    
-    // TODO: 重置聊天记录
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已创建新对话')),
-    );
   }
 }

@@ -14,4 +14,22 @@ class Message {
     this.imageUrl,
     this.isLoading = false,
   });
+  
+  Message copyWith({
+    String? id,
+    String? content,
+    bool? isUser,
+    DateTime? timestamp,
+    String? imageUrl,
+    bool? isLoading,
+  }) {
+    return Message(
+      id: id ?? this.id,
+      content: content ?? this.content,
+      isUser: isUser ?? this.isUser,
+      timestamp: timestamp ?? this.timestamp,
+      imageUrl: imageUrl ?? this.imageUrl,
+      isLoading: isLoading ?? this.isLoading,
+    );
+  }
 } 

@@ -1,60 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zenx/components/assistant_item.dart';
 import 'package:zenx/models/assistant.dart';
 import 'package:zenx/models/chat_session.dart';
 import 'package:zenx/utils/constants.dart';
 import 'package:zenx/screens/settings_screen.dart';
+import 'package:zenx/states/assistant_provider.dart';
+import 'package:zenx/states/chat_provider.dart';
 
-class LeftDrawer extends StatefulWidget {
+class LeftDrawer extends ConsumerStatefulWidget {
   const LeftDrawer({Key? key}) : super(key: key);
 
   @override
-  _LeftDrawerState createState() => _LeftDrawerState();
+  ConsumerState<LeftDrawer> createState() => _LeftDrawerState();
 }
 
-class _LeftDrawerState extends State<LeftDrawer> with SingleTickerProviderStateMixin {
+class _LeftDrawerState extends ConsumerState<LeftDrawer> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int _selectedAssistantIndex = 0;
-  
-  // 临时数据 - 后续会从状态管理中获取
-  final List<Assistant> _assistants = [
-    Assistant(
-      id: '1',
-      name: '通用助手',
-      description: '可以回答各种问题',
-      systemPrompt: '你是ZenX的AI助手，可以回答用户的各种问题。',
-      iconPath: 'icons/assistant.png', // 稍后添加
-      modelConfig: ApiModelConfig(
-        apiProvider: 'openai',
-        modelName: 'gpt-4o',
-      ),
-    ),
-    Assistant(
-      id: '2',
-      name: '编程专家',
-      description: '帮助解决编程问题',
-      systemPrompt: '你是编程领域专家，精通多种编程语言和框架，可以回答编程相关问题。',
-      iconPath: 'icons/code.png', // 稍后添加
-      modelConfig: ApiModelConfig(
-        apiProvider: 'openai',
-        modelName: 'gpt-4o',
-      ),
-    ),
-    Assistant(
-      id: '3',
-      name: '写作助手',
-      description: '帮助创作和改进文章',
-      systemPrompt: '你是写作助手，可以帮助用户创作、修改和改进各类文章。',
-      iconPath: 'icons/write.png', // 稍后添加
-      modelConfig: ApiModelConfig(
-        apiProvider: 'gemini',
-        modelName: 'gemini-pro',
-      ),
-    ),
-  ];
-  
-  // 临时数据 - 历史会话
-  final List<ChatSession> _chatSessions = [];
 
   @override
   void initState() {
@@ -115,21 +77,43 @@ class _LeftDrawerState extends State<LeftDrawer> with SingleTickerProviderStateM
   }
 
   Widget _buildAssistantsTab() {
+    // 使用Provider获取助手列表和当前选中索引
+    final assistants = ref.watch(assistantsProvider);
+    final selectedIndex = ref.watch(selectedAssistantIndexProvider);
+    
     return ListView.builder(
       padding: EdgeInsets.all(AppTheme.smallPadding),
-      itemCount: _assistants.length,
+      itemCount: assistants.length,
       itemBuilder: (context, index) {
         return Padding(
           padding: EdgeInsets.only(bottom: AppTheme.listItemSpacing),
           child: AssistantItem(
-            assistant: _assistants[index],
-            isSelected: index == _selectedAssistantIndex,
+            assistant: assistants[index],
+            isSelected: index == selectedIndex,
             onTap: () {
-              setState(() {
-                _selectedAssistantIndex = index;
-              });
-              // TODO: 通知上层切换助手
-              Navigator.pop(context);
+              // 更新选中的助手索引
+              ref.read(selectedAssistantIndexProvider.notifier).state = index;
+              
+              // 如果是新对话，更新会话标题
+              final currentTitle = ref.read(currentSessionTitleProvider);
+              if (currentTitle == '新对话') {
+                ref.read(currentSessionTitleProvider.notifier).state = 
+                    '${assistants[index].name}的对话';
+              }
+              
+              // 清空现有消息并添加欢迎消息
+              ref.read(currentMessagesProvider.notifier).state = [];
+              addAssistantWelcomeMessage(
+                ref, 
+                assistants[index].name, 
+                assistants[index].description
+              );
+              
+              // 自动切换到历史标签，不关闭抽屉
+              _tabController.animateTo(1);
+              
+              // 不再立即关闭抽屉，让用户查看助手历史记录
+              // Navigator.pop(context);
             },
           ),
         );
@@ -138,22 +122,42 @@ class _LeftDrawerState extends State<LeftDrawer> with SingleTickerProviderStateM
   }
 
   Widget _buildHistoryTab() {
-    if (_chatSessions.isEmpty) {
+    // 使用Provider获取当前选中的助手
+    final currentAssistant = ref.watch(currentAssistantProvider);
+    
+    // 获取当前助手的会话
+    final assistantSessions = ref.watch(
+      assistantSessionsProvider(currentAssistant.id)
+    );
+    
+    if (assistantSessions.isEmpty) {
       return Center(
-        child: Text(
-          '没有历史会话',
-          style: AppTheme.bodyTextStyle.copyWith(
-            color: AppTheme.neutralGray,
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '没有${currentAssistant.name}的历史会话',
+              style: AppTheme.bodyTextStyle.copyWith(
+                color: AppTheme.neutralGray,
+              ),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text('开始新对话'),
+            ),
+          ],
         ),
       );
     }
     
     return ListView.builder(
       padding: EdgeInsets.all(AppTheme.smallPadding),
-      itemCount: _chatSessions.length,
+      itemCount: assistantSessions.length,
       itemBuilder: (context, index) {
-        final session = _chatSessions[index];
+        final session = assistantSessions[index];
         return ListTile(
           title: Text(
             session.title,
@@ -165,7 +169,8 @@ class _LeftDrawerState extends State<LeftDrawer> with SingleTickerProviderStateM
             style: AppTheme.captionTextStyle,
           ),
           onTap: () {
-            // TODO: 加载历史会话
+            // 加载历史会话
+            loadSession(ref, session.id);
             Navigator.pop(context);
           },
         );

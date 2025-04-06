@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zenx/models/assistant.dart';
 import 'package:zenx/utils/constants.dart';
+import 'package:zenx/states/assistant_provider.dart';
 
-class RightSettingsDrawer extends StatefulWidget {
-  final Assistant? currentAssistant;
-  final Function(Assistant)? onAssistantUpdated;
-  
-  const RightSettingsDrawer({
-    Key? key,
-    this.currentAssistant,
-    this.onAssistantUpdated,
-  }) : super(key: key);
+class RightSettingsDrawer extends ConsumerStatefulWidget {
+  const RightSettingsDrawer({Key? key}) : super(key: key);
 
   @override
-  _RightSettingsDrawerState createState() => _RightSettingsDrawerState();
+  ConsumerState<RightSettingsDrawer> createState() => _RightSettingsDrawerState();
 }
 
-class _RightSettingsDrawerState extends State<RightSettingsDrawer> {
+class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
   late TextEditingController _systemPromptController;
   String _selectedApiProvider = 'openai';
   String _selectedModel = 'gpt-4o';
@@ -32,29 +27,38 @@ class _RightSettingsDrawerState extends State<RightSettingsDrawer> {
   @override
   void initState() {
     super.initState();
-    _initializeValues();
+    // 直接在initState中初始化控制器
+    _systemPromptController = TextEditingController();
+    // 在控制器初始化后再调用后续方法
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeValues();
+    });
   }
   
   @override
   void didUpdateWidget(RightSettingsDrawer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.currentAssistant != oldWidget.currentAssistant) {
+    // 当Provider的值改变时，更新控制器
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeValues();
-    }
+    });
   }
   
   void _initializeValues() {
-    if (widget.currentAssistant != null) {
-      _systemPromptController = TextEditingController(
-        text: widget.currentAssistant!.systemPrompt,
-      );
-      _selectedApiProvider = widget.currentAssistant!.modelConfig.apiProvider;
-      _selectedModel = widget.currentAssistant!.modelConfig.modelName;
-      _contextLength = widget.currentAssistant!.modelConfig.contextLength;
-      _streamingEnabled = widget.currentAssistant!.modelConfig.streamingEnabled;
-    } else {
-      _systemPromptController = TextEditingController();
+    // 从Provider获取当前助手信息
+    final currentAssistant = ref.read(currentAssistantProvider);
+    
+    // 直接更新文本，无需检查是否为null
+    if (_systemPromptController.text != currentAssistant.systemPrompt) {
+      _systemPromptController.text = currentAssistant.systemPrompt;
     }
+    
+    setState(() {
+      _selectedApiProvider = currentAssistant.modelConfig.apiProvider;
+      _selectedModel = currentAssistant.modelConfig.modelName;
+      _contextLength = currentAssistant.modelConfig.contextLength;
+      _streamingEnabled = currentAssistant.modelConfig.streamingEnabled;
+    });
   }
   
   @override
@@ -68,16 +72,8 @@ class _RightSettingsDrawerState extends State<RightSettingsDrawer> {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final drawerWidth = AppTheme.getDrawerWidth(context);
     
-    if (widget.currentAssistant == null) {
-      return SizedBox(
-        width: drawerWidth,
-        child: Drawer(
-          child: Center(
-            child: Text('请先选择一个助手'),
-          ),
-        ),
-      );
-    }
+    // 从Provider获取当前助手
+    final currentAssistant = ref.watch(currentAssistantProvider);
     
     return SizedBox(
       width: drawerWidth,
@@ -95,7 +91,7 @@ class _RightSettingsDrawerState extends State<RightSettingsDrawer> {
                 AppTheme.smallPadding,
               ),
               child: Text(
-                '${widget.currentAssistant!.name}设置',
+                '${currentAssistant.name}设置',
                 style: AppTheme.headerTextStyle,
               ),
             ),
@@ -249,13 +245,11 @@ class _RightSettingsDrawerState extends State<RightSettingsDrawer> {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<int>(
           isExpanded: true,
-          value: contextOptions.contains(_contextLength) 
-              ? _contextLength 
-              : 4000,
+          value: _contextLength,
           items: contextOptions.map((length) {
             return DropdownMenuItem<int>(
               value: length,
-              child: Text('$length 字符'),
+              child: Text('$length tokens'),
             );
           }).toList(),
           onChanged: (value) {
@@ -272,10 +266,11 @@ class _RightSettingsDrawerState extends State<RightSettingsDrawer> {
   
   Widget _buildStreamingToggle() {
     return SwitchListTile(
-      title: Text('流式输出'),
-      subtitle: Text('启用打字机效果'),
+      title: Text('流式响应'),
+      subtitle: Text('实时显示AI回复'),
       value: _streamingEnabled,
       activeColor: AppTheme.primaryBlue,
+      contentPadding: EdgeInsets.zero,
       onChanged: (value) {
         setState(() {
           _streamingEnabled = value;
@@ -286,7 +281,6 @@ class _RightSettingsDrawerState extends State<RightSettingsDrawer> {
   
   Widget _buildApplyButton() {
     return Container(
-      width: double.infinity,
       padding: EdgeInsets.all(AppTheme.defaultPadding),
       decoration: BoxDecoration(
         border: Border(
@@ -297,46 +291,56 @@ class _RightSettingsDrawerState extends State<RightSettingsDrawer> {
           ),
         ),
       ),
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primaryBlue,
-          padding: EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _applySettings,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryBlue,
+            padding: EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+            ),
           ),
-        ),
-        onPressed: _applySettings,
-        child: Text(
-          '应用设置',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          child: Text('应用设置'),
         ),
       ),
     );
   }
   
   void _applySettings() {
-    if (widget.onAssistantUpdated != null && widget.currentAssistant != null) {
-      final updatedAssistant = Assistant(
-        id: widget.currentAssistant!.id,
-        name: widget.currentAssistant!.name,
-        description: widget.currentAssistant!.description,
-        systemPrompt: _systemPromptController.text,
-        iconPath: widget.currentAssistant!.iconPath,
-        chatSessions: widget.currentAssistant!.chatSessions,
-        modelConfig: ApiModelConfig(
-          apiProvider: _selectedApiProvider,
-          modelName: _selectedModel,
-          contextLength: _contextLength,
-          streamingEnabled: _streamingEnabled,
-        ),
-      );
-      
-      widget.onAssistantUpdated!(updatedAssistant);
-    }
+    // 获取当前助手
+    final currentAssistant = ref.read(currentAssistantProvider);
+    final assistants = ref.read(assistantsProvider);
+    final selectedIndex = ref.read(selectedAssistantIndexProvider);
     
-    Navigator.pop(context);
+    // 创建更新后的助手对象
+    final updatedAssistant = Assistant(
+      id: currentAssistant.id,
+      name: currentAssistant.name,
+      description: currentAssistant.description,
+      systemPrompt: _systemPromptController.text,
+      iconPath: currentAssistant.iconPath,
+      modelConfig: ApiModelConfig(
+        apiProvider: _selectedApiProvider,
+        modelName: _selectedModel,
+        contextLength: _contextLength,
+        streamingEnabled: _streamingEnabled,
+      ),
+    );
+    
+    // 更新助手列表
+    final updatedAssistants = assistants.map((assistant) => 
+      assistant.id == updatedAssistant.id ? updatedAssistant : assistant
+    ).toList();
+    
+    // 更新状态
+    ref.read(assistantsProvider.notifier).state = updatedAssistants;
+    
+    // 提示并关闭抽屉
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('设置已应用')),
+    );
+    Navigator.of(context).pop();
   }
 } 
