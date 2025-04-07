@@ -21,11 +21,23 @@ class _LeftDrawerState extends ConsumerState<LeftDrawer> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    // 使用保存的抽屉标签索引初始化TabController
+    final savedTabIndex = ref.read(drawerSelectedTabProvider);
+    _tabController = TabController(length: 2, vsync: this, initialIndex: savedTabIndex);
+    
+    // 监听标签切换，保存当前选中的标签索引
+    _tabController.addListener(_handleTabChange);
+  }
+
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging || _tabController.index != ref.read(drawerSelectedTabProvider)) {
+      ref.read(drawerSelectedTabProvider.notifier).state = _tabController.index;
+    }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     super.dispose();
   }
@@ -109,8 +121,11 @@ class _LeftDrawerState extends ConsumerState<LeftDrawer> with SingleTickerProvid
                 assistants[index].description
               );
               
-              // 自动切换到历史标签，不关闭抽屉
+              // 自动切换到历史标签
               _tabController.animateTo(1);
+              
+              // 更新抽屉标签状态为历史标签
+              ref.read(drawerSelectedTabProvider.notifier).state = 1;
               
               // 不再立即关闭抽屉，让用户查看助手历史记录
               // Navigator.pop(context);

@@ -12,6 +12,9 @@ final currentSessionTitleProvider = StateProvider<String>((ref) => '新对话');
 // 当前会话消息列表
 final currentMessagesProvider = StateProvider<List<Message>>((ref) => []);
 
+// 左侧抽屉选中的标签页索引
+final drawerSelectedTabProvider = StateProvider<int>((ref) => 0);
+
 // 创建新会话
 void createNewSession(WidgetRef ref) {
   final currentAssistant = ref.read(currentAssistantProvider);

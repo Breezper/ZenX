@@ -48,11 +48,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final apiKeys = settings.apiKeys;
     
     String provider = modelConfig.apiProvider;
-    String apiKey = apiKeys[provider] ?? '';
-    String baseUrl = apiKeys['${provider}_url'] ?? 'https://api.openai.com/v1';
+    
+    // 处理API key名称的变体
+    String apiKeyName = provider;
+    String urlKeyName = '${provider}_url';
+    
+    // 特殊处理OpenAI兼容API的键名
+    if (provider == 'openai-compatible') {
+      // 检查可能的键名变体 
+      if (!apiKeys.containsKey('openai-compatible') && apiKeys.containsKey('openai_compatible')) {
+        apiKeyName = 'openai_compatible';
+      }
+      if (!apiKeys.containsKey('openai-compatible_url') && apiKeys.containsKey('openai_compatible_url')) {
+        urlKeyName = 'openai_compatible_url';
+      }
+    }
+    
+    String apiKey = apiKeys[apiKeyName] ?? '';
+    String baseUrl = apiKeys[urlKeyName] ?? 'https://api.openai.com/v1';
     String model = modelConfig.modelName;
     
     final headers = {'Content-Type': 'application/json'};
+    
+    // DEBUG: 打印API配置信息
+    print("==== Chat API Config Debug ====");
+    print("Provider: $provider | API Key Name: $apiKeyName | URL Key Name: $urlKeyName");
+    print("API Key: ${apiKey.isNotEmpty ? '已设置' : '空'} | Base URL: ${baseUrl != 'https://api.openai.com/v1' ? '已设置' : '默认'}");
+    print("Model: $model");
+    print("============================");
     
     return ApiConfig(
       provider: provider,
@@ -156,28 +179,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
         },
         onDone: () {
-          // 设置输入完成状态
-          ref.read(isTypingProvider.notifier).state = false;
+          // 先确保消息内容已更新
+          final messages = ref.read(currentMessagesProvider);
+          final index = messages.indexWhere((m) => m.id == aiMessage.id);
           
-          // 如果没有启用流式响应，则在完成时一次性更新
-          if (!enableStreaming) {
-            final messages = ref.read(currentMessagesProvider);
-            final index = messages.indexWhere((m) => m.id == aiMessage.id);
+          if (index != -1) {
+            // 如果没有启用流式响应或需要最终更新
+            final updatedMessages = [...messages];
+            updatedMessages[index] = messages[index].copyWith(content: fullContent);
+            ref.read(currentMessagesProvider.notifier).state = updatedMessages;
             
-            if (index != -1) {
-              final updatedMessages = [...messages];
-              updatedMessages[index] = messages[index].copyWith(content: fullContent);
-              ref.read(currentMessagesProvider.notifier).state = updatedMessages;
-            }
+            // 延迟一帧后再关闭输入状态，确保UI已更新
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              // 设置输入完成状态
+              ref.read(isTypingProvider.notifier).state = false;
+              
+              // 自动保存会话
+              saveCurrentSession(ref);
+              
+              // 自动滚动到底部
+              _scrollToBottom();
+            });
+          } else {
+            // 如果找不到消息，直接关闭状态
+            ref.read(isTypingProvider.notifier).state = false;
           }
-          
-          // 自动保存会话
-          saveCurrentSession(ref);
-          
-          // 自动滚动到底部
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToBottom();
-          });
         },
         onError: (error) {
           ref.read(isTypingProvider.notifier).state = false;
@@ -269,24 +295,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return ListView.builder(
       controller: _scrollController,
       padding: EdgeInsets.symmetric(vertical: AppTheme.smallPadding),
-      itemCount: messages.length + (isTyping ? 1 : 0),
+      itemCount: messages.length,
       itemBuilder: (context, index) {
-        if (index == messages.length) {
-          return Padding(
-            padding: EdgeInsets.only(
-              left: AppTheme.defaultPadding,
-              right: AppTheme.defaultPadding,
-              bottom: AppTheme.smallPadding,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TypingIndicator(),
-            ),
-          );
-        }
-        
         return ChatBubble(message: messages[index]);
       },
     );
+  }
+  
+  // 检查是否已有空的AI消息（表示正在响应中）
+  bool _hasEmptyAIMessage(List<Message> messages) {
+    return messages.any((message) => !message.isUser && message.content.isEmpty);
   }
 } 

@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zenx/models/assistant.dart';
 import 'package:zenx/utils/constants.dart';
 import 'package:zenx/states/assistant_provider.dart';
+import 'package:zenx/states/settings_provider.dart';
+import 'package:zenx/api/openai_compatible_api.dart';
+import 'package:zenx/models/api_config.dart';
+import 'package:zenx/states/models_provider.dart';
 
 class RightSettingsDrawer extends ConsumerStatefulWidget {
   const RightSettingsDrawer({Key? key}) : super(key: key);
@@ -17,11 +21,14 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
   String _selectedModel = 'gpt-4o';
   int _contextLength = 4000;
   bool _streamingEnabled = true;
+  String _apiKeyName = 'openai';
+  String _urlKeyName = 'openai_url';
   
-  final Map<String, List<String>> _modelOptions = {
+  final Map<String, List<String>> _defaultModelOptions = {
     'openai': ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
     'anthropic': ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
     'gemini': ['gemini-pro', 'gemini-ultra'],
+    'openai-compatible': ['custom-model'], // 默认选项，会被API获取的模型替换
   };
   
   @override
@@ -59,6 +66,29 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
       _contextLength = currentAssistant.modelConfig.contextLength;
       _streamingEnabled = currentAssistant.modelConfig.streamingEnabled;
     });
+    
+    // 如果选择的是OpenAI兼容API，触发模型获取
+    _fetchCustomModelsIfNeeded();
+  }
+  
+  // 根据需要获取自定义模型
+  void _fetchCustomModelsIfNeeded() {
+    final apiKeys = ref.read(apiKeysProvider);
+    
+    // 检查是否有OpenAI兼容API配置
+    if (_selectedApiProvider == 'openai-compatible') {
+      // 检查可能的键名
+      final hasApiKey = apiKeys.containsKey('openai-compatible') || apiKeys.containsKey('openai_compatible');
+      final hasBaseUrl = apiKeys.containsKey('openai-compatible_url') || 
+                        apiKeys.containsKey('openai_compatible_url') ||
+                        apiKeys.containsKey('openai-compatible-url') ||
+                        apiKeys.containsKey('openai_compatible-url');
+      
+      if (hasApiKey && hasBaseUrl) {
+        // 通过全局提供者获取模型
+        ref.read(apiModelsProvider.notifier).fetchModelsForProvider('openai-compatible');
+      }
+    }
   }
   
   @override
@@ -74,6 +104,31 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     
     // 从Provider获取当前助手
     final currentAssistant = ref.watch(currentAssistantProvider);
+    // 获取API keys
+    final apiKeys = ref.watch(apiKeysProvider);
+    
+    // DEBUG: 打印API配置信息
+    print("==== API Keys Debug ====");
+    apiKeys.forEach((key, value) {
+      print("Key: $key | Value: ${value.isNotEmpty ? '已设置' : '空'}");
+    });
+    print("选中的提供商: $_selectedApiProvider");
+    print("=======================");
+    
+    // 更新键名映射
+    _apiKeyName = _selectedApiProvider;
+    _urlKeyName = '${_selectedApiProvider}_url';
+    
+    // 特殊处理OpenAI兼容API的键名
+    if (_selectedApiProvider == 'openai-compatible') {
+      // 检查可能的键名变体 
+      if (!apiKeys.containsKey('openai-compatible') && apiKeys.containsKey('openai_compatible')) {
+        _apiKeyName = 'openai_compatible';
+      }
+      if (!apiKeys.containsKey('openai-compatible_url') && apiKeys.containsKey('openai_compatible_url')) {
+        _urlKeyName = 'openai_compatible_url';
+      }
+    }
     
     return SizedBox(
       width: drawerWidth,
@@ -107,6 +162,13 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
                   _buildSectionTitle('模型选择'),
                   SizedBox(height: 8),
                   _buildProviderDropdown(),
+                  // 检查是否配置了API Key (使用类变量)
+                  if (!apiKeys.containsKey(_apiKeyName) || apiKeys[_apiKeyName]?.isEmpty == true)
+                    _buildApiKeyWarning(),
+                  // OpenAI兼容API需要base URL (使用类变量)
+                  if (_selectedApiProvider == 'openai-compatible' && 
+                      (!apiKeys.containsKey(_urlKeyName) || apiKeys[_urlKeyName]?.isEmpty == true))
+                    _buildBaseUrlWarning(),
                   SizedBox(height: 8),
                   _buildModelDropdown(),
                   SizedBox(height: 16),
@@ -117,6 +179,8 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
                   SizedBox(height: 16),
                   
                   _buildStreamingToggle(),
+                  // 使用全局流式响应设置
+                  _buildGlobalStreamingSetting(),
                 ],
               ),
             ),
@@ -157,43 +221,62 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     );
   }
   
-  Widget _buildProviderDropdown() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
-        border: Border.all(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? AppTheme.dividerDark
-              : AppTheme.dividerLight,
+  Widget _buildApiKeyWarning() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0),
+      child: Container(
+        padding: EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
         ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: _selectedApiProvider,
-          items: _modelOptions.keys.map((provider) {
-            return DropdownMenuItem<String>(
-              value: provider,
-              child: Text(provider.toUpperCase()),
-            );
-          }).toList(),
-          onChanged: (value) {
-            if (value != null) {
-              setState(() {
-                _selectedApiProvider = value;
-                _selectedModel = _modelOptions[value]!.first;
-              });
-            }
-          },
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '未配置${_apiKeyName.toUpperCase()}的API密钥，请在应用设置中添加',
+                style: TextStyle(color: Colors.orange[800]),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
   
-  Widget _buildModelDropdown() {
-    final models = _modelOptions[_selectedApiProvider] ?? [];
+  Widget _buildBaseUrlWarning() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0),
+      child: Container(
+        padding: EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '未配置OpenAI兼容API的基础URL，请在应用设置中添加',
+                style: TextStyle(color: Colors.orange[800]),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildProviderDropdown() {
+    // 获取有API密钥的提供商
+    final apiKeys = ref.watch(apiKeysProvider);
+    
+    // 添加OpenAI兼容API到选项中
+    final List<String> providers = [..._defaultModelOptions.keys];
     
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12),
@@ -209,22 +292,152 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           isExpanded: true,
-          value: models.contains(_selectedModel) ? _selectedModel : models.first,
-          items: models.map((model) {
+          value: providers.contains(_selectedApiProvider) ? _selectedApiProvider : providers.first,
+          items: providers.map((provider) {
+            bool hasKey = apiKeys.containsKey(provider) && apiKeys[provider]?.isNotEmpty == true;
+            // OpenAI兼容API还需要检查URL
+            if (provider == 'openai-compatible') {
+              hasKey = hasKey && apiKeys.containsKey('openai-compatible_url') && 
+                      apiKeys['openai-compatible_url']?.isNotEmpty == true;
+            }
+            
+            String displayName = provider.toUpperCase();
+            if (provider == 'openai-compatible') {
+              displayName = 'OPENAI兼容API';
+            }
+            
             return DropdownMenuItem<String>(
-              value: model,
-              child: Text(model),
+              value: provider,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(displayName),
+                  if (hasKey)
+                    Icon(Icons.check_circle, color: Colors.green, size: 16)
+                  else
+                    Icon(Icons.error_outline, color: Colors.orange, size: 16),
+                ],
+              ),
             );
           }).toList(),
           onChanged: (value) {
             if (value != null) {
               setState(() {
-                _selectedModel = value;
+                _selectedApiProvider = value;
+                
+                // 如果是OpenAI兼容API，尝试获取模型列表
+                if (value == 'openai-compatible') {
+                  _fetchCustomModelsIfNeeded();
+                }
+                
+                // 选择默认模型
+                final defaultModels = _defaultModelOptions[value] ?? [];
+                if (defaultModels.isNotEmpty) {
+                  _selectedModel = defaultModels.first;
+                }
               });
             }
           },
         ),
       ),
+    );
+  }
+  
+  Widget _buildModelDropdown() {
+    // 根据选择的提供商获取模型列表
+    List<String> models = [];
+    bool isLoading = false;
+    
+    // 获取全局缓存的模型列表
+    if (_selectedApiProvider == 'openai-compatible') {
+      models = ref.watch(providerModelsProvider('openai-compatible'));
+      isLoading = ref.watch(isLoadingModelsProvider('openai-compatible'));
+      
+      // 如果没有获取到模型，使用默认列表
+      if (models.isEmpty && !isLoading) {
+        models = _defaultModelOptions['openai-compatible'] ?? [];
+      }
+    } else {
+      models = _defaultModelOptions[_selectedApiProvider] ?? [];
+    }
+    
+    // 检查自定义模型
+    final apiKeys = ref.watch(apiKeysProvider);
+    final customModelKey = '${_selectedApiProvider}_model';
+    if (apiKeys.containsKey(customModelKey) && apiKeys[customModelKey]?.isNotEmpty == true) {
+      final customModel = apiKeys[customModelKey]!;
+      if (!models.contains(customModel)) {
+        models.add(customModel);
+      }
+    }
+    
+    // 如果没有模型选项，添加一个默认选项
+    if (models.isEmpty) {
+      models = ['custom-model'];
+    }
+    
+    // 如果当前选择的模型不在列表中，默认选择第一个
+    if (!models.contains(_selectedModel) && models.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _selectedModel = models.first;
+        });
+      });
+    }
+    
+    return Stack(
+      children: [
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+            border: Border.all(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppTheme.dividerDark
+                  : AppTheme.dividerLight,
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: models.contains(_selectedModel) ? _selectedModel : models.first,
+              items: models.map((model) {
+                return DropdownMenuItem<String>(
+                  value: model,
+                  child: Text(model),
+                );
+              }).toList(),
+              onChanged: isLoading ? null : (value) {
+                if (value != null) {
+                  setState(() {
+                    _selectedModel = value;
+                  });
+                }
+              },
+            ),
+          ),
+        ),
+        // 加载指示器
+        if (isLoading)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+              ),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
   
@@ -279,6 +492,36 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     );
   }
   
+  Widget _buildGlobalStreamingSetting() {
+    // 获取全局流式响应设置
+    final globalStreaming = ref.watch(streamingResponsesProvider);
+    
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0),
+      child: Container(
+        padding: EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+          border: Border.all(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? AppTheme.dividerDark
+                : AppTheme.dividerLight,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: AppTheme.primaryBlue),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text('全局流式响应设置: ${globalStreaming ? "已启用" : "已禁用"}'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
   Widget _buildApplyButton() {
     return Container(
       padding: EdgeInsets.all(AppTheme.defaultPadding),
@@ -313,6 +556,52 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     final currentAssistant = ref.read(currentAssistantProvider);
     final assistants = ref.read(assistantsProvider);
     final selectedIndex = ref.read(selectedAssistantIndexProvider);
+    final apiKeys = ref.read(apiKeysProvider);
+    
+    // 检查是否有API密钥
+    final hasApiKey = apiKeys.containsKey(_apiKeyName) && 
+                     apiKeys[_apiKeyName]?.isNotEmpty == true;
+    
+    // OpenAI兼容API还需要检查URL
+    final needsBaseUrl = _selectedApiProvider == 'openai-compatible';
+    final hasBaseUrl = !needsBaseUrl || (apiKeys.containsKey(_urlKeyName) && 
+                      apiKeys[_urlKeyName]?.isNotEmpty == true);
+    
+    if (!hasApiKey) {
+      // 提示用户添加API密钥
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('请先在设置中添加${_apiKeyName.toUpperCase()}的API密钥'),
+          action: SnackBarAction(
+            label: '前往设置',
+            onPressed: () {
+              Navigator.of(context).pop(); // 关闭抽屉
+              // 导航到设置页面 - 你需要根据你的应用添加设置页面的导航逻辑
+              // Navigator.of(context).pushNamed('/settings');
+            },
+          ),
+        ),
+      );
+      return;
+    }
+    
+    if (!hasBaseUrl) {
+      // 提示用户添加基础URL
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('请先在设置中添加OpenAI兼容API的基础URL'),
+          action: SnackBarAction(
+            label: '前往设置',
+            onPressed: () {
+              Navigator.of(context).pop(); // 关闭抽屉
+              // 导航到设置页面
+              // Navigator.of(context).pushNamed('/settings');
+            },
+          ),
+        ),
+      );
+      return;
+    }
     
     // 创建更新后的助手对象
     final updatedAssistant = Assistant(

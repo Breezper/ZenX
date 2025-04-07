@@ -2,35 +2,66 @@ import 'package:flutter/material.dart';
 import 'package:zenx/models/message.dart';
 import 'package:zenx/utils/constants.dart';
 
-class ChatBubble extends StatelessWidget {
+class ChatBubble extends StatefulWidget {
   final Message message;
   
   const ChatBubble({
     Key? key,
     required this.message,
   }) : super(key: key);
+
+  @override
+  State<ChatBubble> createState() => _ChatBubbleState();
+}
+
+class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<int> _dotsAnimation;
+  
+  @override
+  void initState() {
+    super.initState();
+    // 只有在AI消息且内容为空时才初始化动画
+    if (!widget.message.isUser && widget.message.content.isEmpty) {
+      _animationController = AnimationController(
+        vsync: this,
+        duration: Duration(milliseconds: 1500),
+      )..repeat();
+      
+      _dotsAnimation = IntTween(begin: 0, end: 3).animate(_animationController);
+    } else {
+      // 创建默认控制器但不启动它
+      _animationController = AnimationController(vsync: this, duration: Duration(milliseconds: 1000));
+    }
+  }
+  
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
   
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
     // 根据消息类型设置气泡样式
-    final alignment = message.isUser 
+    final alignment = widget.message.isUser 
         ? CrossAxisAlignment.end 
         : CrossAxisAlignment.start;
     
     // 根据主题和消息类型确定气泡颜色
-    final bubbleColor = message.isUser
+    final bubbleColor = widget.message.isUser
         ? (isDarkMode ? AppTheme.userBubbleDark : AppTheme.userBubbleLight)
         : (isDarkMode ? AppTheme.openAIBubbleDark : AppTheme.openAIBubbleLight);
     
     // 根据发送者确定文本颜色
-    final textColor = message.isUser
+    final textColor = widget.message.isUser
         ? (isDarkMode ? Colors.white : Colors.black)
         : (Colors.white);
     
     // 根据发送者确定气泡形状
-    final borderRadius = message.isUser
+    final borderRadius = widget.message.isUser
         ? BorderRadius.only(
             topLeft: Radius.circular(AppTheme.bubbleRadius),
             topRight: Radius.circular(AppTheme.bubbleRadius),
@@ -61,13 +92,13 @@ class ChatBubble extends StatelessWidget {
               borderRadius: borderRadius,
             ),
             padding: EdgeInsets.all(AppTheme.smallPadding),
-            child: message.isLoading
+            child: widget.message.isLoading
                 ? _buildLoadingIndicator()
                 : _buildMessageContent(textColor),
           ),
           SizedBox(height: 4),
           Text(
-            _formatTime(message.timestamp),
+            _formatTime(widget.message.timestamp),
             style: AppTheme.captionTextStyle.copyWith(
               fontSize: 11,
             ),
@@ -89,28 +120,52 @@ class ChatBubble extends StatelessWidget {
   }
   
   Widget _buildMessageContent(Color textColor) {
+    // 检查是否是AI的空消息
+    final isAIEmptyMessage = !widget.message.isUser && widget.message.content.isEmpty;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (message.imageUrl != null) ...[
+        if (widget.message.imageUrl != null) ...[
           ClipRRect(
             borderRadius: BorderRadius.circular(AppTheme.bubbleRadius - 4),
             child: Image.network(
-              message.imageUrl!,
+              widget.message.imageUrl!,
               fit: BoxFit.cover,
               width: double.infinity,
             ),
           ),
           SizedBox(height: 8),
         ],
-        SelectableText(
-          message.content,
+        isAIEmptyMessage
+            ? _buildThinkingAnimation(textColor)
+            : SelectableText(
+                widget.message.content,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 15,
+                ),
+              ),
+      ],
+    );
+  }
+  
+  Widget _buildThinkingAnimation(Color textColor) {
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        String dots = '';
+        for (int i = 0; i < _dotsAnimation.value; i++) {
+          dots += '.';
+        }
+        return Text(
+          '正在思考$dots',
           style: TextStyle(
             color: textColor,
             fontSize: 15,
           ),
-        ),
-      ],
+        );
+      },
     );
   }
   

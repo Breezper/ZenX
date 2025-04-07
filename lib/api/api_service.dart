@@ -19,11 +19,25 @@ class ApiService {
   final Map<String, BaseChatAPI> _apis = {
     'openai': OpenAIAPI(),
     'openai_compatible': OpenAICompatibleAPI(),
+    'openai-compatible': OpenAICompatibleAPI(), // 添加连字符版本
   };
   
   /// 获取指定提供商的API实现
   BaseChatAPI? getApi(String provider) {
-    return _apis[provider.toLowerCase()];
+    // 标准化提供商名称（统一使用小写和处理连字符/下划线变体）
+    String normalizedProvider = provider.toLowerCase();
+    
+    // 处理openai-compatible和openai_compatible的互换性
+    if (normalizedProvider == 'openai-compatible' && !_apis.containsKey('openai-compatible')) {
+      normalizedProvider = 'openai_compatible';
+    } else if (normalizedProvider == 'openai_compatible' && !_apis.containsKey('openai_compatible')) {
+      normalizedProvider = 'openai-compatible';
+    }
+    
+    // 打印调试信息
+    print("获取API实现: 原始提供商=$provider, 标准化后=$normalizedProvider");
+    
+    return _apis[normalizedProvider];
   }
   
   /// 获取所有支持的API提供商
@@ -79,6 +93,9 @@ class ApiService {
     required MessageHistory history,
     required ApiConfig config,
   }) async {
+    // 在发送消息前打印API配置
+    print("发送消息API配置: provider=${config.provider}, apiKey=${config.apiKey.isNotEmpty ? '已设置' : '空'}, baseUrl=${config.baseUrl}");
+    
     final api = getApi(config.provider);
     if (api == null) {
       final streamController = StreamController<String>();
