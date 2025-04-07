@@ -3,52 +3,42 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:zenx/api/base_chat_api.dart';
-import 'package:zenx/api/deepseek_api.dart';
 import 'package:zenx/models/api_config.dart';
 
-/// 通用自定义API实现
-/// 支持OpenAI兼容格式和自定义格式
-class CustomAPI extends BaseChatAPI {
-  final String _name;
-  final Color _brandColor;
-  final List<String> _supportedModels;
-  
-  CustomAPI({
-    required String name,
-    Color? brandColor,
-    List<String>? supportedModels,
-  }) : 
-    _name = name,
-    _brandColor = brandColor ?? Colors.grey,
-    _supportedModels = supportedModels ?? [];
+/// DeepSeek API实现 - 预设配置
+class DeepSeekAPI extends BaseChatAPI {
+  // DeepSeek预设模型列表
+  static const List<String> defaultModels = [
+    'deepseek-chat',
+    'deepseek-coder',
+    'deepseek-lite',
+    'deepseek-llm-67b-chat',
+    'deepseek-coder-33b-instruct'
+  ];
+
+  // DeepSeek品牌颜色
+  static const Color defaultBrandColor = Color(0xFF0066CC);
   
   @override
-  String get vendorName => _name;
+  String get vendorName => 'DeepSeek';
   
   @override
-  Color get brandColor => _brandColor;
+  Color get brandColor => DeepSeekAPI.defaultBrandColor;
   
   @override
-  List<String> get supportedModels => _supportedModels;
+  List<String> get supportedModels => DeepSeekAPI.defaultModels;
   
   @override
   Future<bool> validateApiKey(String apiKey) async {
-    print("CustomAPI.validateApiKey - API名称: $_name, 密钥长度: ${apiKey.length}");
+    print("DeepSeekAPI.validateApiKey - 密钥长度: ${apiKey.length}");
     
     if (apiKey.isEmpty) {
-      print("CustomAPI.validateApiKey - 密钥为空，验证失败");
+      print("DeepSeekAPI.validateApiKey - 密钥为空，验证失败");
       return false;
     }
     
-    // 如果是DeepSeek API，使用专用实现
-    if (_name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.validateApiKey(apiKey);
-    }
-    
-    // 对于自定义API，我们简化验证，总是返回true
-    // 实际验证将在sendMessage时进行
-    print("CustomAPI.validateApiKey - 验证成功 (简化验证逻辑)");
+    // 简化验证，密钥不为空则视为有效
+    print("DeepSeekAPI.validateApiKey - 验证成功 (简化验证逻辑)");
     return true;
   }
   
@@ -58,19 +48,13 @@ class CustomAPI extends BaseChatAPI {
     required MessageHistory history,
     required ApiConfig config,
   }) async {
-    // 如果是DeepSeek API，使用专用实现
-    if (config.provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.sendMessage(message: message, history: history, config: config);
-    }
-    
     final streamController = StreamController<String>();
     
     try {
       // 准备请求体数据
-      final requestBody = _prepareRequestBody(message, history, config);
+      final requestBody = prepareRequestBody(message, history, config);
       
-      print("发送请求到 ${config.provider} API: ${config.baseUrl}/chat/completions");
+      print("发送请求到 DeepSeek API: ${config.baseUrl}/chat/completions");
       print("请求体: ${requestBody.toString()}");
       
       // 使用Dio处理流式响应
@@ -99,7 +83,6 @@ class CustomAPI extends BaseChatAPI {
       final utf8Decoder = Utf8Decoder();
       
       // 缓存接收到的消息片段
-      String fullContent = '';
       String buffer = '';
       
       // 处理流式响应
@@ -132,7 +115,7 @@ class CustomAPI extends BaseChatAPI {
                   // 解析JSON
                   final Map<String, dynamic> data = jsonDecode(line);
                   
-                  // OpenAI兼容格式处理
+                  // 处理DeepSeek格式
                   if (data.containsKey('choices') && 
                       data['choices'] is List && 
                       data['choices'].isNotEmpty) {
@@ -154,10 +137,9 @@ class CustomAPI extends BaseChatAPI {
                     }
                     
                     if (content.isNotEmpty) {
-                      // 添加到完整内容中
-                      fullContent += content;
-                      // 发送完整内容
-                      streamController.add(fullContent);
+                      // 只发送增量部分，不累积
+                      print("发送DeepSeek增量更新: $content");
+                      streamController.add(content);
                     }
                   }
                 } catch (e) {
@@ -170,7 +152,7 @@ class CustomAPI extends BaseChatAPI {
           }
         },
         onDone: () {
-          print("流式响应完成，完整内容: $fullContent");
+          print("流式响应完成");
           if (!streamController.isClosed) {
             streamController.close();
           }
@@ -187,7 +169,7 @@ class CustomAPI extends BaseChatAPI {
       
       return StreamedResponse(textStream: streamController.stream);
     } catch (e) {
-      final errorMsg = '发送消息到 ${config.provider} API失败: $e';
+      final errorMsg = '发送消息到 DeepSeek API失败: $e';
       print(errorMsg);
       streamController.addError(errorMsg);
       streamController.close();
@@ -195,18 +177,12 @@ class CustomAPI extends BaseChatAPI {
     }
   }
   
-  // 准备API请求主体
-  Map<String, dynamic> _prepareRequestBody(
+  // 准备DeepSeek API请求主体
+  Map<String, dynamic> prepareRequestBody(
     String message, 
     MessageHistory history,
     ApiConfig config,
   ) {
-    // 如果是DeepSeek API，使用专用实现
-    if (config.provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.prepareRequestBody(message, history, config);
-    }
-    
     // 转换历史消息为OpenAI兼容格式
     final messages = history.messages.map((msg) {
       // 检查是否是系统提示词消息
@@ -230,33 +206,29 @@ class CustomAPI extends BaseChatAPI {
     });
     
     // 获取正确的模型名称
-    String modelName = config.provider;
+    String modelName = 'deepseek-chat'; // 默认模型
     
     // 检查是否有存储在config.model中的模型名称
-    if (config.model != null && config.model.isNotEmpty) {
-      modelName = config.model;
+    if (config.model?.isNotEmpty == true) {
+      modelName = config.model!;
     }
     
-    // 返回请求体
+    // 返回请求体，带有DeepSeek特定参数
     return {
       'model': modelName,
       'messages': messages,
       'temperature': 0.7,
       'max_tokens': 2000,
       'stream': true, // 启用流式响应
+      'top_p': 0.8,  // DeepSeek特定参数
     };
   }
   
-  // 获取API支持的模型列表
+  // 获取DeepSeek API支持的模型列表
   Future<List<String>> fetchModels(ApiConfig config) async {
-    // 如果是DeepSeek API，使用专用实现
-    if (config.provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.fetchModels(config);
-    }
-    
-    // 非DeepSeek API的处理逻辑
+    print("获取DeepSeek API支持的模型列表");
     try {
+      // 尝试使用models端点获取模型列表
       final response = await Dio().get(
         '${config.baseUrl}/models',
         options: Options(
@@ -268,8 +240,9 @@ class CustomAPI extends BaseChatAPI {
       );
       
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = response.data;
+        print("DeepSeek API返回模型列表: ${response.data}");
         
+        final Map<String, dynamic> data = response.data;
         if (data.containsKey('data') && data['data'] is List) {
           final List<dynamic> models = data['data'];
           final modelList = models.map((model) => model['id'].toString()).toList();
@@ -280,41 +253,50 @@ class CustomAPI extends BaseChatAPI {
         }
       }
       
-      // 如果无法获取模型列表或列表为空，返回默认模型
-      return ['custom-model'];
     } catch (e) {
-      print('获取模型列表失败: $e');
-      // 出错时也返回默认模型
-      return ['custom-model'];
-    }
-  }
-  
-  // 验证API配置
-  Future<bool> validateConfig(ApiConfig config) async {
-    // 如果是DeepSeek API，使用专用实现
-    if (config.provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.validateConfig(config);
+      print('获取DeepSeek模型列表失败: $e');
     }
     
-    // 普通API验证
+    // 返回预设模型列表
+    return DeepSeekAPI.defaultModels;
+  }
+  
+  // 验证DeepSeek API配置
+  Future<bool> validateConfig(ApiConfig config) async {
     try {
-      print("验证API配置: provider=${config.provider}, baseUrl=${config.baseUrl}");
+      print("验证DeepSeek API配置: baseUrl=${config.baseUrl}");
       
+      // 尝试获取模型列表
       final response = await Dio().get(
         '${config.baseUrl}/models',
         options: Options(
           headers: {
             'Authorization': 'Bearer ${config.apiKey}',
+            'Content-Type': 'application/json',
             ...config.headers,
           },
         ),
       );
       
-      return response.statusCode == 200;
+      final bool isValid = response.statusCode == 200;
+      print("DeepSeek API验证结果: $isValid, 状态码: ${response.statusCode}");
+      
+      if (isValid) {
+        try {
+          // 记录支持的模型
+          final data = response.data;
+          print("DeepSeek API支持的模型: ${data.toString()}");
+        } catch (e) {
+          // 忽略打印错误
+        }
+      }
+      
+      return isValid;
     } catch (e) {
-      print('验证API配置失败: $e');
-      return false;
+      print('验证DeepSeek API配置失败: $e');
+      // 即使验证失败，也允许通过，因为有些服务器可能没有models端点或有限制
+      print("DeepSeek API验证失败，但仍允许使用");
+      return true;
     }
   }
 } 

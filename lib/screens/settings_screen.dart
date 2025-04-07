@@ -994,7 +994,7 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
             
             SizedBox(height: 16),
             Text(
-              '注意: API密钥将安全加密存储在您的设备上，不会上传到任何服务器。',
+              '注意: API密钥将安全加密存储在您的设备上，不会上传到任何服务器。通常需要在基础URL末尾手动加上/v1',
               style: AppTheme.captionTextStyle,
             ),
           ],

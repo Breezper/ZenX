@@ -239,9 +239,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       
       // 处理流式响应
       String fullContent = '';
+      
       response.textStream.listen(
         (chunk) {
+          // 所有API都以相同方式处理，累积接收到的内容
           fullContent += chunk;
+          
           if (enableStreaming) {
             // 如果启用了流式响应，则实时更新UI
             final messages = ref.read(currentMessagesProvider);
@@ -251,6 +254,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               final updatedMessages = [...messages];
               updatedMessages[index] = messages[index].copyWith(content: fullContent);
               ref.read(currentMessagesProvider.notifier).state = updatedMessages;
+              
+              // 自动滚动到底部确保用户可以看到最新内容
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _scrollToBottom();
+              });
             }
           }
         },

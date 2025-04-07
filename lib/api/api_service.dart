@@ -3,6 +3,7 @@ import 'package:zenx/api/base_chat_api.dart';
 import 'package:zenx/api/openai_api.dart';
 import 'package:zenx/api/openai_compatible_api.dart';
 import 'package:zenx/api/custom_api.dart';
+import 'package:zenx/api/deepseek_api.dart';
 import 'package:zenx/models/api_config.dart';
 
 /// API服务类，管理和提供各种API实现
@@ -21,7 +22,7 @@ class ApiService {
     'openai': OpenAIAPI(),
     'openai_compatible': OpenAICompatibleAPI(),
     'openai-compatible': OpenAICompatibleAPI(), // 添加连字符版本
-    'deepseek': CustomAPI(name: 'DeepSeek'), // 添加DeepSeek API支持
+    'deepseek': DeepSeekAPI(), // 使用专用DeepSeek API实现
   };
   
   /// 注册自定义API提供商
@@ -181,6 +182,7 @@ class ApiService {
       print("找到API实现: ${api.vendorName}, 使用模型: ${config.model ?? '未指定'}");
       
       try {
+        // 使用特定API实现发送消息
         return await api.sendMessage(
           message: message,
           history: history,
