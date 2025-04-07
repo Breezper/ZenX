@@ -163,11 +163,15 @@ class _LeftDrawerState extends ConsumerState<LeftDrawer> with SingleTickerProvid
       );
     }
     
+    // 对会话按最后更新时间降序排序（最新的在最上面）
+    final sortedSessions = List<ChatSession>.from(assistantSessions)
+      ..sort((a, b) => b.lastUpdatedAt.compareTo(a.lastUpdatedAt));
+    
     return ListView.builder(
       padding: EdgeInsets.all(AppTheme.smallPadding),
-      itemCount: assistantSessions.length,
+      itemCount: sortedSessions.length,
       itemBuilder: (context, index) {
-        final session = assistantSessions[index];
+        final session = sortedSessions[index];
         return ListTile(
           title: Text(
             session.title,
@@ -214,6 +218,48 @@ class _LeftDrawerState extends ConsumerState<LeftDrawer> with SingleTickerProvid
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}/${date.month}/${date.day}';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    
+    // 格式化时间部分
+    String timeStr = '${_padZero(date.hour)}:${_padZero(date.minute)}';
+    
+    if (dateOnly == today) {
+      // 今天
+      return '今天 $timeStr';
+    } else if (dateOnly == yesterday) {
+      // 昨天
+      return '昨天 $timeStr';
+    } else if (today.difference(dateOnly).inDays < 7) {
+      // 本周内（过去7天内）
+      return '${_getWeekdayName(date.weekday)} $timeStr';
+    } else if (date.year == now.year) {
+      // 本年内
+      return '${date.month}月${date.day}日 $timeStr';
+    } else {
+      // 更早
+      return '${date.year}年${date.month}月${date.day}日';
+    }
+  }
+  
+  // 补零工具函数
+  String _padZero(int number) {
+    return number.toString().padLeft(2, '0');
+  }
+  
+  // 获取星期名称
+  String _getWeekdayName(int weekday) {
+    const Map<int, String> weekdayNames = {
+      1: '周一',
+      2: '周二',
+      3: '周三',
+      4: '周四',
+      5: '周五',
+      6: '周六',
+      7: '周日',
+    };
+    return weekdayNames[weekday] ?? '';
   }
 } 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:zenx/models/message.dart';
 import 'package:zenx/utils/constants.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ChatBubble extends StatefulWidget {
   final Message message;
@@ -122,6 +123,7 @@ class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateM
   Widget _buildMessageContent(Color textColor) {
     // 检查是否是AI的空消息
     final isAIEmptyMessage = !widget.message.isUser && widget.message.content.isEmpty;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,11 +141,80 @@ class _ChatBubbleState extends State<ChatBubble> with SingleTickerProviderStateM
         ],
         isAIEmptyMessage
             ? _buildThinkingAnimation(textColor)
-            : SelectableText(
-                widget.message.content,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 15,
+            : MarkdownBody(
+                data: widget.message.content,
+                selectable: true,
+                softLineBreak: true,
+                styleSheetTheme: MarkdownStyleSheetBaseTheme.material,
+                styleSheet: MarkdownStyleSheet(
+                  p: TextStyle(
+                    color: textColor,
+                    fontSize: 15,
+                  ),
+                  h1: TextStyle(
+                    color: textColor,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h2: TextStyle(
+                    color: textColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h3: TextStyle(
+                    color: textColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  code: TextStyle(
+                    color: isDarkMode ? Colors.white : Colors.black,
+                    fontSize: 14,
+                    fontFamily: 'monospace',
+                    backgroundColor: isDarkMode ? Colors.black38 : Colors.grey.shade200,
+                  ),
+                  codeblockPadding: EdgeInsets.all(8),
+                  codeblockDecoration: BoxDecoration(
+                    color: isDarkMode ? Colors.black38 : Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  blockquote: TextStyle(
+                    color: textColor.withOpacity(0.8),
+                    fontSize: 15,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  blockquotePadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  blockquoteDecoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(
+                        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                        width: 4.0,
+                      ),
+                    ),
+                  ),
+                  listBullet: TextStyle(
+                    color: textColor,
+                    fontSize: 15,
+                  ),
+                  listIndent: 24,
+                  listBulletPadding: EdgeInsets.only(right: 4),
+                  tableBorder: TableBorder.all(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    width: 1,
+                  ),
+                  tableHead: TextStyle(
+                    color: textColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  tableBody: TextStyle(
+                    color: textColor,
+                    fontSize: 15,
+                  ),
+                  a: TextStyle(
+                    color: Colors.blue,
+                    fontSize: 15,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
               ),
       ],
