@@ -4,6 +4,7 @@ import 'package:zenx/utils/constants.dart';
 import 'package:zenx/models/api_config.dart';
 import 'package:zenx/api/api_service.dart';
 import 'package:zenx/api/custom_api.dart';
+import 'package:zenx/api/title_generator_service.dart';
 import 'package:zenx/states/settings_provider.dart';
 import 'package:zenx/states/models_provider.dart';
 // Import the new components
@@ -19,6 +20,24 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    
+    // 延迟执行以确保组件已完全初始化
+    Future.microtask(() {
+      // 如果已经配置了标题生成API，则尝试获取可用模型
+      final settings = ref.read(settingsProvider);
+      if (settings.titleGenerationApiEnabled && 
+          settings.titleGenerationApiKey != null && 
+          settings.titleGenerationApiKey!.isNotEmpty &&
+          settings.titleGenerationApiUrl != null &&
+          settings.titleGenerationApiUrl!.isNotEmpty) {
+        _fetchModelsIfPossible(ref);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Force a complete refresh by watching all relevant providers
@@ -162,6 +181,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             value: settings.enableHapticFeedback,
             onChanged: (value) => ref.read(settingsProvider.notifier).toggleHapticFeedback(value),
           ),
+          
+          SizedBox(height: 32),
+          SectionHeader(title: '标题生成'),
+          _buildTitleGenerationSettings(context, ref, settings),
           
           SizedBox(height: 32),
           _buildVersionInfo(),
@@ -499,5 +522,201 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildTitleGenerationSettings(BuildContext context, WidgetRef ref, Settings settings) {
+    // 获取标题生成API的设置
+    final titleGenerationEnabled = settings.titleGenerationApiEnabled;
+    final titleGenerationApiKey = settings.titleGenerationApiKey;
+    final titleGenerationApiUrl = settings.titleGenerationApiUrl;
+    final titleGenerationApiModel = settings.titleGenerationApiModel;
+    
+    // 获取可用模型列表
+    final availableModels = ref.watch(titleGenerationAvailableModelsProvider);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 启用开关
+        ToggleSettingItem(
+          title: '自动生成标题',
+          subtitle: '在首轮对话后生成描述性标题',
+          value: titleGenerationEnabled,
+          onChanged: (value) => ref.read(settingsProvider.notifier).toggleTitleGenerationApi(value),
+        ),
+        
+        // 标题生成API配置
+        if (titleGenerationEnabled) SettingsCard(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '标题生成API配置',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 16),
+                
+                // API密钥
+                TextFormField(
+                  initialValue: titleGenerationApiKey ?? '',
+                  decoration: InputDecoration(
+                    labelText: 'API密钥',
+                    hintText: '输入用于生成标题的API密钥',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  obscureText: true,
+                  onChanged: (value) {
+                    if (value.isNotEmpty) {
+                      ref.read(settingsProvider.notifier).setTitleGenerationApiKey(value);
+                      _fetchModelsIfPossible(ref);
+                    }
+                  },
+                ),
+                SizedBox(height: 12),
+                
+                // API基础URL
+                TextFormField(
+                  initialValue: titleGenerationApiUrl ?? 'https://api.openai.com/v1',
+                  decoration: InputDecoration(
+                    labelText: 'API基础URL',
+                    hintText: '例如: https://api.openai.com/v1',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    suffixIcon: IconButton(
+                      icon: Icon(Icons.refresh),
+                      tooltip: '获取可用模型',
+                      onPressed: () => _fetchModelsIfPossible(ref),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    if (value.isNotEmpty) {
+                      ref.read(settingsProvider.notifier).setTitleGenerationApiUrl(value);
+                    }
+                  },
+                ),
+                SizedBox(height: 12),
+                
+                // API模型 - 使用下拉列表
+                DropdownButtonFormField<String>(
+                  value: availableModels.contains(titleGenerationApiModel) 
+                      ? titleGenerationApiModel 
+                      : (availableModels.isNotEmpty ? availableModels.first : null),
+                  decoration: InputDecoration(
+                    labelText: '模型名称',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  hint: Text('选择模型'),
+                  items: availableModels.map((model) {
+                    return DropdownMenuItem(
+                      value: model,
+                      child: Text(
+                        model,
+                        style: TextStyle(fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      ref.read(settingsProvider.notifier).setTitleGenerationApiModel(value);
+                    }
+                  },
+                ),
+                SizedBox(height: 16),
+                
+                Text(
+                  '标题生成会消耗少量API额度。建议使用价格较低的模型以节省成本，如gpt-3.5-turbo。',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  // 如果API密钥和URL都已设置，则尝试获取可用模型
+  Future<void> _fetchModelsIfPossible(WidgetRef ref) async {
+    final apiKey = ref.read(titleGenerationApiKeyProvider);
+    final baseUrl = ref.read(titleGenerationApiUrlProvider);
+    
+    if (apiKey == null || apiKey.isEmpty || baseUrl == null || baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('请先填写API密钥和基础URL')),
+      );
+      return;
+    }
+    
+    try {
+      // 检查缓存中是否已有该baseURL的模型列表
+      final cache = ref.read(modelsCacheProvider);
+      if (cache.containsKey(baseUrl)) {
+        // 如果缓存中有，直接使用缓存
+        final cachedModels = cache[baseUrl]!;
+        ref.read(titleGenerationAvailableModelsProvider.notifier).state = cachedModels;
+        
+        // 如果当前选择的模型不在列表中，则选择第一个模型
+        final currentModel = ref.read(titleGenerationApiModelProvider);
+        if (currentModel == null || !cachedModels.contains(currentModel)) {
+          ref.read(settingsProvider.notifier).setTitleGenerationApiModel(cachedModels.first);
+        }
+        
+        // 显示来自缓存的提示
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('从缓存加载了${cachedModels.length}个模型')),
+        );
+        return;
+      }
+      
+      // 显示加载中指示器
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('正在获取可用模型...')),
+      );
+      
+      // 获取模型列表
+      final models = await TitleGeneratorService.fetchAvailableModels(baseUrl, apiKey);
+      
+      // 更新模型列表
+      if (models.isNotEmpty) {
+        // 更新可用模型列表
+        ref.read(titleGenerationAvailableModelsProvider.notifier).state = models;
+        
+        // 更新缓存
+        final updatedCache = Map<String, List<String>>.from(cache);
+        updatedCache[baseUrl] = models;
+        ref.read(modelsCacheProvider.notifier).state = updatedCache;
+        
+        // 如果当前选择的模型不在列表中，则选择第一个模型
+        final currentModel = ref.read(titleGenerationApiModelProvider);
+        if (currentModel == null || !models.contains(currentModel)) {
+          ref.read(settingsProvider.notifier).setTitleGenerationApiModel(models.first);
+        }
+        
+        // 显示成功消息
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('成功获取${models.length}个可用模型')),
+          );
+        }
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('未找到可用的聊天模型')),
+          );
+        }
+      }
+    } catch (e) {
+      print('获取模型列表失败: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('获取模型列表失败: ${e.toString()}')),
+        );
+      }
+    }
   }
 } 

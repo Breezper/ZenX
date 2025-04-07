@@ -15,6 +15,12 @@ class Settings {
   final Map<String, String> apiDisplayNames;
   final Map<String, bool> apiVisibility;
   
+  // Title Generation API settings - dedicated configuration
+  final bool titleGenerationApiEnabled;
+  final String? titleGenerationApiKey;
+  final String? titleGenerationApiUrl;
+  final String? titleGenerationApiModel;
+  
   // Other preferences
   final bool enableStreamingResponses;
   final String language;
@@ -26,6 +32,10 @@ class Settings {
     this.apiKeys = const {},
     this.apiDisplayNames = const {},
     this.apiVisibility = const {},
+    this.titleGenerationApiEnabled = false,
+    this.titleGenerationApiKey,
+    this.titleGenerationApiUrl = "https://api.openai.com/v1",
+    this.titleGenerationApiModel = "gpt-3.5-turbo",
     this.enableStreamingResponses = true,
     this.language = 'zh_CN',
     this.enableSoundEffects = true,
@@ -37,6 +47,10 @@ class Settings {
     Map<String, String>? apiKeys,
     Map<String, String>? apiDisplayNames,
     Map<String, bool>? apiVisibility,
+    bool? titleGenerationApiEnabled,
+    String? titleGenerationApiKey,
+    String? titleGenerationApiUrl,
+    String? titleGenerationApiModel,
     bool? enableStreamingResponses,
     String? language,
     bool? enableSoundEffects,
@@ -47,6 +61,10 @@ class Settings {
       apiKeys: apiKeys ?? this.apiKeys,
       apiDisplayNames: apiDisplayNames ?? this.apiDisplayNames,
       apiVisibility: apiVisibility ?? this.apiVisibility,
+      titleGenerationApiEnabled: titleGenerationApiEnabled ?? this.titleGenerationApiEnabled,
+      titleGenerationApiKey: titleGenerationApiKey ?? this.titleGenerationApiKey,
+      titleGenerationApiUrl: titleGenerationApiUrl ?? this.titleGenerationApiUrl,
+      titleGenerationApiModel: titleGenerationApiModel ?? this.titleGenerationApiModel,
       enableStreamingResponses: enableStreamingResponses ?? this.enableStreamingResponses,
       language: language ?? this.language,
       enableSoundEffects: enableSoundEffects ?? this.enableSoundEffects,
@@ -64,6 +82,9 @@ class Settings {
       'enableHapticFeedback': enableHapticFeedback,
       'apiDisplayNames': apiDisplayNames,
       'apiVisibility': apiVisibility,
+      'titleGenerationApiEnabled': titleGenerationApiEnabled,
+      'titleGenerationApiUrl': titleGenerationApiUrl,
+      'titleGenerationApiModel': titleGenerationApiModel,
       // API keys are stored separately in secure storage
     };
   }
@@ -76,6 +97,9 @@ class Settings {
       language: json['language'] ?? 'zh_CN',
       enableSoundEffects: json['enableSoundEffects'] ?? true,
       enableHapticFeedback: json['enableHapticFeedback'] ?? true,
+      titleGenerationApiEnabled: json['titleGenerationApiEnabled'] ?? false,
+      titleGenerationApiUrl: json['titleGenerationApiUrl'] ?? "https://api.openai.com/v1",
+      titleGenerationApiModel: json['titleGenerationApiModel'] ?? "gpt-3.5-turbo",
       apiDisplayNames: json['apiDisplayNames'] != null 
           ? Map<String, String>.from(json['apiDisplayNames']) 
           : {},
@@ -123,6 +147,12 @@ class SettingsNotifier extends StateNotifier<Settings> {
         
         state = state.copyWith(apiKeys: apiKeys);
       }
+      
+      // Load title generation API key separately for security
+      final titleApiKey = await _secureStorage.read(key: 'title_generation_api_key');
+      if (titleApiKey != null && _mounted) {
+        state = state.copyWith(titleGenerationApiKey: titleApiKey);
+      }
     } catch (e) {
       // If there's an error, use default settings
       if (_mounted) {
@@ -143,6 +173,7 @@ class SettingsNotifier extends StateNotifier<Settings> {
       print("保存设置 - API显示名称: ${state.apiDisplayNames}");
       print("保存设置 - API可见性: ${state.apiVisibility}");
       print("保存设置 - API密钥: ${state.apiKeys.keys.join(', ')}");
+      print("保存设置 - 标题生成配置: 开启=${state.titleGenerationApiEnabled}, URL=${state.titleGenerationApiUrl}, 模型=${state.titleGenerationApiModel}");
       
       // Save general settings
       final settingsJson = jsonEncode(state.toJson());
@@ -160,6 +191,14 @@ class SettingsNotifier extends StateNotifier<Settings> {
         key: 'api_keys',
         value: apiKeysJson,
       );
+      
+      // Save title generation API key separately for security
+      if (state.titleGenerationApiKey != null) {
+        await _secureStorage.write(
+          key: 'title_generation_api_key',
+          value: state.titleGenerationApiKey!,
+        );
+      }
       
       print("设置保存成功");
     } catch (e) {
@@ -421,6 +460,62 @@ class SettingsNotifier extends StateNotifier<Settings> {
     _saveSettings();
   }
 
+  // Toggle title generation API
+  Future<void> toggleTitleGenerationApi(bool enable) async {
+    state = state.copyWith(titleGenerationApiEnabled: enable);
+    await _saveSettings();
+  }
+
+  // Set title generation API settings
+  Future<void> setTitleGenerationApiSettings({
+    bool? enabled,
+    String? apiKey,
+    String? apiUrl,
+    String? apiModel,
+  }) async {
+    if (!_mounted) {
+      print("警告: 尝试在销毁后设置标题生成API配置");
+      return;
+    }
+    
+    try {
+      state = state.copyWith(
+        titleGenerationApiEnabled: enabled ?? state.titleGenerationApiEnabled,
+        titleGenerationApiKey: apiKey ?? state.titleGenerationApiKey,
+        titleGenerationApiUrl: apiUrl ?? state.titleGenerationApiUrl,
+        titleGenerationApiModel: apiModel ?? state.titleGenerationApiModel,
+      );
+      
+      print("标题生成API设置已更新:");
+      if (enabled != null) print("- 开启状态: $enabled");
+      if (apiKey != null) print("- API密钥: [已更新]");
+      if (apiUrl != null) print("- 基础URL: $apiUrl");
+      if (apiModel != null) print("- 模型: $apiModel");
+      
+      await _saveSettings();
+    } catch (e) {
+      print("保存标题生成API设置时出错: $e");
+      if (_mounted) {
+        rethrow;
+      }
+    }
+  }
+  
+  // Set title generation API key
+  Future<void> setTitleGenerationApiKey(String apiKey) async {
+    await setTitleGenerationApiSettings(apiKey: apiKey);
+  }
+  
+  // Set title generation API URL
+  Future<void> setTitleGenerationApiUrl(String apiUrl) async {
+    await setTitleGenerationApiSettings(apiUrl: apiUrl);
+  }
+  
+  // Set title generation API model
+  Future<void> setTitleGenerationApiModel(String apiModel) async {
+    await setTitleGenerationApiSettings(apiModel: apiModel);
+  }
+
   // Reset all settings to default
   Future<void> resetSettings() async {
     state = const Settings();
@@ -472,4 +567,31 @@ final visibleApiProvidersProvider = Provider<List<String>>((ref) {
 
 final streamingResponsesProvider = Provider<bool>((ref) {
   return ref.watch(settingsProvider).enableStreamingResponses;
+});
+
+// Title generation API providers
+final titleGenerationApiEnabledProvider = Provider<bool>((ref) {
+  return ref.watch(settingsProvider).titleGenerationApiEnabled;
+});
+
+final titleGenerationApiKeyProvider = Provider<String?>((ref) {
+  return ref.watch(settingsProvider).titleGenerationApiKey;
+});
+
+final titleGenerationApiUrlProvider = Provider<String?>((ref) {
+  return ref.watch(settingsProvider).titleGenerationApiUrl;
+});
+
+final titleGenerationApiModelProvider = Provider<String?>((ref) {
+  return ref.watch(settingsProvider).titleGenerationApiModel;
+});
+
+// 用于存储标题生成API可用模型的状态提供者
+final titleGenerationAvailableModelsProvider = StateProvider<List<String>>((ref) {
+  return ['gpt-3.5-turbo', 'gpt-4']; // 默认值
+});
+
+// 根据baseURL缓存模型列表
+final modelsCacheProvider = StateProvider<Map<String, List<String>>>((ref) {
+  return {}; // 空缓存
 }); 

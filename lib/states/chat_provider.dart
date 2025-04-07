@@ -2,6 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zenx/models/message.dart';
 import 'package:zenx/models/chat_session.dart';
 import 'package:zenx/states/assistant_provider.dart';
+import 'package:zenx/states/settings_provider.dart';
+import 'package:zenx/api/title_generator_service.dart';
+import 'package:flutter/material.dart';
 
 // 当前会话ID
 final currentSessionIdProvider = StateProvider<String?>((ref) => null);
@@ -36,6 +39,55 @@ void createNewSession(WidgetRef ref) {
 void addMessage(WidgetRef ref, Message message) {
   final currentMessages = ref.read(currentMessagesProvider);
   ref.read(currentMessagesProvider.notifier).state = [...currentMessages, message];
+  
+  // 检查是否需要生成标题
+  final shouldGenerateTitle = ref.read(titleGenerationApiEnabledProvider) && 
+                             ref.read(currentSessionIdProvider) == null && 
+                             currentMessages.length >= 1;
+  
+  if (shouldGenerateTitle && !message.isUser) {
+    // 在助手回复后生成标题
+    _generateTitleForCurrentChat(ref);
+  }
+}
+
+// 使用标题生成API生成标题
+Future<void> _generateTitleForCurrentChat(WidgetRef ref) async {
+  try {
+    final messages = ref.read(currentMessagesProvider);
+    
+    // 确保有足够的消息生成标题（至少一对对话）
+    if (messages.length < 2) return;
+    
+    // 获取标题生成API的设置
+    final settings = ref.read(settingsProvider);
+    final isEnabled = settings.titleGenerationApiEnabled;
+    final apiKey = settings.titleGenerationApiKey;
+    final apiUrl = settings.titleGenerationApiUrl;
+    final apiModel = settings.titleGenerationApiModel;
+    
+    // 如果功能未启用或没有API密钥，则不生成标题
+    if (!isEnabled || apiKey == null || apiKey.isEmpty) return;
+    
+    // 创建标题生成服务
+    final titleGenerator = TitleGeneratorService(
+      apiKey: apiKey,
+      baseUrl: apiUrl ?? "https://api.openai.com/v1",
+      model: apiModel ?? "gpt-3.5-turbo",
+    );
+    
+    // 生成标题
+    final title = await titleGenerator.generateTitle(messages);
+    
+    // 更新会话标题
+    if (title.isNotEmpty) {
+      ref.read(currentSessionTitleProvider.notifier).state = title;
+      debugPrint('已生成会话标题: $title');
+    }
+  } catch (e) {
+    debugPrint('标题生成错误: $e');
+    // 错误处理时不做任何操作，保持默认标题
+  }
 }
 
 // 添加助手欢迎消息
