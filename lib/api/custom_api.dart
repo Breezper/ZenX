@@ -233,10 +233,18 @@ class CustomAPI extends BaseChatAPI {
     
     // 转换历史消息为OpenAI兼容格式
     final messages = history.messages.map((msg) {
-      return {
-        'role': msg.isUser ? 'user' : 'assistant',
-        'content': msg.content,
-      };
+      // 检查是否是系统提示词消息
+      if (msg.metadata != null && msg.metadata!['role'] == 'system') {
+        return {
+          'role': 'system',
+          'content': msg.content,
+        };
+      } else {
+        return {
+          'role': msg.isUser ? 'user' : 'assistant',
+          'content': msg.content,
+        };
+      }
     }).toList();
     
     // 添加当前消息

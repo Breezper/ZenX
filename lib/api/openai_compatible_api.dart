@@ -121,10 +121,18 @@ class OpenAICompatibleAPI extends BaseChatAPI {
     
     // 添加历史消息
     for (final msg in history.messages) {
-      messages.add({
-        'role': msg.isUser ? 'user' : 'assistant',
-        'content': msg.content,
-      });
+      // 检查是否是系统提示词消息
+      if (msg.metadata != null && msg.metadata!['role'] == 'system') {
+        messages.add({
+          'role': 'system',
+          'content': msg.content,
+        });
+      } else {
+        messages.add({
+          'role': msg.isUser ? 'user' : 'assistant',
+          'content': msg.content,
+        });
+      }
     }
     
     // 添加当前消息

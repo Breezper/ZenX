@@ -43,7 +43,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   ApiConfig _getActiveApiConfig() {
     // 从Provider获取当前助手
     final currentAssistant = ref.read(currentAssistantProvider);
-    final modelConfig = currentAssistant.modelConfig;
+    
+    // 打印当前助手详细信息用于调试
+    print("==== Current Assistant Debug ====");
+    print("Name: ${currentAssistant.name}");
+    print("ID: ${currentAssistant.id}");
+    print("System Prompt: ${currentAssistant.systemPrompt}");
+    print("API Provider: ${currentAssistant.modelConfig.apiProvider}");
+    print("Model Name: ${currentAssistant.modelConfig.modelName}");
+    print("==============================");
+    
+    // 从assistantNotifierProvider读取最新的助手列表
+    final assistants = ref.read(assistantNotifierProvider);
+    final selectedIndex = ref.read(selectedAssistantIndexProvider);
+    
+    // 确保我们使用的是最新的助手信息
+    final updatedAssistant = assistants[selectedIndex];
+    
+    print("==== Updated Assistant Debug ====");
+    print("Name: ${updatedAssistant.name}");
+    print("ID: ${updatedAssistant.id}");
+    print("System Prompt: ${updatedAssistant.systemPrompt}");
+    print("API Provider: ${updatedAssistant.modelConfig.apiProvider}");
+    print("Model Name: ${updatedAssistant.modelConfig.modelName}");
+    print("==============================");
+    
+    final modelConfig = updatedAssistant.modelConfig;
     final settings = ref.read(settingsProvider);
     final apiKeys = settings.apiKeys;
     
@@ -90,7 +115,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // 从Provider获取当前消息
     final currentMessages = ref.read(currentMessagesProvider);
     
+    // 获取最新的助手信息
+    final assistants = ref.read(assistantNotifierProvider);
+    final selectedIndex = ref.read(selectedAssistantIndexProvider);
+    final currentAssistant = assistants[selectedIndex];
+    
+    // 打印系统提示词调试信息
+    print("在消息历史中使用系统提示词: ${currentAssistant.systemPrompt}");
+    
     final history = <ChatMessage>[];
+    
+    // 添加系统提示词作为第一条消息
+    if (currentAssistant.systemPrompt.isNotEmpty) {
+      history.add(
+        ChatMessage(
+          content: currentAssistant.systemPrompt,
+          isUser: false,
+          metadata: {'role': 'system'},
+        ),
+      );
+    }
+    
+    // 添加历史消息
     for (final message in currentMessages) {
       history.add(
         ChatMessage(

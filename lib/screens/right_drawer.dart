@@ -885,13 +885,11 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
       ),
     );
     
-    // 更新助手列表
-    final updatedAssistants = assistants.map((assistant) => 
-      assistant.id == updatedAssistant.id ? updatedAssistant : assistant
-    ).toList();
+    // 使用正确的notifier方法更新助手
+    ref.read(assistantNotifierProvider.notifier).updateAssistant(updatedAssistant);
     
-    // 更新状态
-    ref.read(assistantsProvider.notifier).state = updatedAssistants;
+    // 打印确认系统提示词已更新
+    print("助手系统提示词已更新: ${_systemPromptController.text}");
     
     // 提示并关闭抽屉
     ScaffoldMessenger.of(context).showSnackBar(
