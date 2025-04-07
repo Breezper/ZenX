@@ -122,6 +122,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     
     // 打印系统提示词调试信息
     print("在消息历史中使用系统提示词: ${currentAssistant.systemPrompt}");
+    print("当前上下文长度设置: ${currentAssistant.modelConfig.contextLength}");
     
     final history = <ChatMessage>[];
     
@@ -136,8 +137,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
     }
     
-    // 添加历史消息
-    for (final message in currentMessages) {
+    // 根据contextLength设置过滤历史消息
+    int contextLength = currentAssistant.modelConfig.contextLength;
+    List<Message> filteredMessages = [];
+    
+    if (contextLength == 0) {
+      // 不保留任何历史消息
+      print("上下文长度设置为0，不使用任何历史消息");
+      // 只使用当前用户发送的最后一条消息
+      if (currentMessages.isNotEmpty && currentMessages.last.isUser) {
+        filteredMessages = [currentMessages.last];
+      }
+    } else if (contextLength > 0 && contextLength < 100) {
+      // 保留指定数量的消息
+      print("上下文长度限制为 $contextLength 条消息");
+      if (currentMessages.length <= contextLength) {
+        // 如果总消息数少于或等于设置值，使用所有消息
+        filteredMessages = currentMessages;
+      } else {
+        // 否则取最新的N条消息
+        filteredMessages = currentMessages.sublist(currentMessages.length - contextLength);
+      }
+    } else {
+      // contextLength为-1或大于100，表示无限制，使用所有消息
+      print("上下文长度无限制，使用所有历史消息");
+      filteredMessages = currentMessages;
+    }
+    
+    // 添加过滤后的历史消息
+    for (final message in filteredMessages) {
       history.add(
         ChatMessage(
           content: message.content,
@@ -145,6 +173,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       );
     }
+    
+    print("最终构建的消息历史记录包含 ${history.length} 条消息");
     return MessageHistory(messages: history);
   }
   
