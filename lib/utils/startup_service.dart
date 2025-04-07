@@ -1,6 +1,7 @@
 import 'package:zenx/api/api_service.dart';
 import 'package:zenx/states/settings_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:zenx/utils/storage_utils.dart';
 
 /// 应用启动服务，负责初始化各种组件
 class StartupService {
@@ -13,7 +14,13 @@ class StartupService {
   Future<void> initialize() async {
     try {
       print("启动服务初始化开始...");
+      
+      // 初始化Hive存储
+      await StorageUtils.initialize();
+      
+      // 初始化自定义API
       await _initializeCustomApis();
+      
       print("启动服务初始化完成");
     } catch (e) {
       print("启动服务初始化失败: $e");

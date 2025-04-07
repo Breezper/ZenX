@@ -245,11 +245,6 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
                       });
                     },
                   ),
-                  SizedBox(height: 16),
-                  
-                  _buildStreamingToggle(),
-                  // Global streaming response setting
-                  _buildGlobalStreamingSetting(),
                 ],
               ),
             ),
@@ -264,30 +259,6 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     return Text(
       title,
       style: AppTheme.titleTextStyle,
-    );
-  }
-  
-  Widget _buildStreamingToggle() {
-    return SwitchListTile(
-      title: Text('流式响应'),
-      subtitle: Text('实时显示AI回复'),
-      value: _streamingEnabled,
-      activeColor: AppTheme.primaryBlue,
-      contentPadding: EdgeInsets.zero,
-      onChanged: (value) {
-        setState(() {
-          _streamingEnabled = value;
-        });
-      },
-    );
-  }
-  
-  Widget _buildGlobalStreamingSetting() {
-    // Get global streaming response setting
-    final globalStreaming = ref.watch(streamingResponsesProvider);
-    
-    return SettingsInfo(
-      message: '全局流式响应设置: ${globalStreaming ? "已启用" : "已禁用"}',
     );
   }
   

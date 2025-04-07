@@ -5,6 +5,7 @@ import 'package:zenx/states/assistant_provider.dart';
 import 'package:zenx/states/settings_provider.dart';
 import 'package:zenx/api/title_generator_service.dart';
 import 'package:flutter/material.dart';
+import 'package:zenx/utils/storage_utils.dart';
 
 // 当前会话ID
 final currentSessionIdProvider = StateProvider<String?>((ref) => null);
@@ -17,6 +18,73 @@ final currentMessagesProvider = StateProvider<List<Message>>((ref) => []);
 
 // 左侧抽屉选中的标签页索引
 final drawerSelectedTabProvider = StateProvider<int>((ref) => 0);
+
+// 会话列表 - 使用StateNotifierProvider来管理
+final chatSessionsProvider = StateNotifierProvider<ChatSessionsNotifier, List<ChatSession>>((ref) {
+  return ChatSessionsNotifier();
+});
+
+// 会话管理类 - 负责会话的持久化存储
+class ChatSessionsNotifier extends StateNotifier<List<ChatSession>> {
+  ChatSessionsNotifier() : super([]) {
+    _loadSessionsFromStorage();
+  }
+  
+  // 从存储加载会话
+  Future<void> _loadSessionsFromStorage() async {
+    try {
+      final sessions = await StorageUtils.loadChatSessions();
+      if (sessions.isNotEmpty) {
+        state = sessions;
+      }
+    } catch (e) {
+      debugPrint('加载会话失败: $e');
+    }
+  }
+  
+  // 保存会话到存储
+  Future<void> _saveSessionsToStorage() async {
+    try {
+      await StorageUtils.saveChatSessions(state);
+    } catch (e) {
+      debugPrint('保存会话失败: $e');
+    }
+  }
+  
+  // 添加或更新会话
+  void addOrUpdateSession(ChatSession session) {
+    final existingIndex = state.indexWhere((s) => s.id == session.id);
+    
+    if (existingIndex >= 0) {
+      // 更新现有会话
+      state = [
+        ...state.sublist(0, existingIndex),
+        session,
+        ...state.sublist(existingIndex + 1),
+      ];
+    } else {
+      // 添加新会话
+      state = [...state, session];
+    }
+    
+    // 保存到存储
+    _saveSessionsToStorage();
+  }
+  
+  // 删除会话
+  void deleteSession(String sessionId) {
+    state = state.where((session) => session.id != sessionId).toList();
+    // 保存到存储
+    _saveSessionsToStorage();
+  }
+  
+  // 清空所有会话
+  void clearAllSessions() {
+    state = [];
+    // 保存到存储
+    _saveSessionsToStorage();
+  }
+}
 
 // 创建新会话
 void createNewSession(WidgetRef ref) {
@@ -48,6 +116,12 @@ void addMessage(WidgetRef ref, Message message) {
   if (shouldGenerateTitle && !message.isUser) {
     // 在助手回复后生成标题
     _generateTitleForCurrentChat(ref);
+  }
+  
+  // 如果有会话ID，自动保存会话
+  final currentSessionId = ref.read(currentSessionIdProvider);
+  if (currentSessionId != null) {
+    saveCurrentSession(ref);
   }
 }
 
@@ -83,6 +157,9 @@ Future<void> _generateTitleForCurrentChat(WidgetRef ref) async {
     if (title.isNotEmpty) {
       ref.read(currentSessionTitleProvider.notifier).state = title;
       debugPrint('已生成会话标题: $title');
+      
+      // 自动保存会话
+      saveCurrentSession(ref);
     }
   } catch (e) {
     debugPrint('标题生成错误: $e');
@@ -122,19 +199,12 @@ void saveCurrentSession(WidgetRef ref) {
     messages: currentMessages,
   );
   
-  // 获取当前所有会话
-  final allSessions = ref.read(chatSessionsProvider);
+  // 使用notifier方法保存会话
+  ref.read(chatSessionsProvider.notifier).addOrUpdateSession(sessionToSave);
   
+  // 如果是新会话，更新当前会话ID
   if (currentSessionId == null) {
-    // 添加新会话
-    ref.read(chatSessionsProvider.notifier).state = [...allSessions, sessionToSave];
-    // 更新当前会话ID
     ref.read(currentSessionIdProvider.notifier).state = sessionToSave.id;
-  } else {
-    // 更新现有会话
-    ref.read(chatSessionsProvider.notifier).state = allSessions.map((session) => 
-      session.id == currentSessionId ? sessionToSave : session
-    ).toList();
   }
 }
 
