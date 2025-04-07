@@ -113,13 +113,8 @@ class _LeftDrawerState extends ConsumerState<LeftDrawer> with SingleTickerProvid
                     '${assistants[index].name}的对话';
               }
               
-              // 清空现有消息并添加欢迎消息
+              // 清空现有消息，不再添加欢迎消息
               ref.read(currentMessagesProvider.notifier).state = [];
-              addAssistantWelcomeMessage(
-                ref, 
-                assistants[index].name, 
-                assistants[index].description
-              );
               
               // 自动切换到历史标签
               _tabController.animateTo(1);

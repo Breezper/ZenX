@@ -46,7 +46,10 @@
 │   │   ├── model_dropdown.dart # 模型下拉选择器
 │   │   ├── context_length_slider.dart # 上下文长度滑块
 │   │   ├── system_prompt_field.dart # 系统提示词输入框
-│   │   └── settings_warning.dart # 设置警告和信息提示
+│   │   ├── settings_warning.dart # 设置警告和信息提示
+│   │   ├── settings_item.dart # 设置页面通用组件
+│   │   ├── api_config_dialog.dart # API配置对话框
+│   │   └── add_api_dialog.dart # 添加新API对话框
 │   ├── 📂 api              # API接口层
 │   │   ├── base_chat_api.dart # 抽象接口
 │   │   ├── openai_api.dart 
@@ -103,6 +106,27 @@
 - 更好的代码组织和可读性
 - 便于团队协作开发
 - 简化复杂界面的构建
+
+#### 设置界面的组件化示例
+设置界面（settings_screen.dart）进行了组件化重构，将复杂的页面拆分为以下组件：
+
+1. **页面主体**：`SettingsScreen` - 负责组织整体布局和处理页面级别的状态
+2. **设置项组件**：`settings_item.dart` - 包含多个可复用的设置项组件
+   - `SettingsCard` - 通用卡片容器
+   - `ApiConfigItem` - API配置项卡片
+   - `ExportOptionItem` - 导出选项卡片 
+   - `ToggleSettingItem` - 开关设置项
+   - `ThemeOptionItem` - 主题选择项
+   - `SectionHeader` - 节标题组件
+3. **对话框组件**：
+   - `api_config_dialog.dart` - API配置对话框，管理API设置
+   - `add_api_dialog.dart` - 添加新API对话框，处理新API创建
+
+这种拆分使得：
+- 主页面代码量从1300+行减少到约300行
+- 各组件独立维护，更容易理解和修改
+- 可以在不同页面复用相同的UI元素
+- 便于后续添加新的设置项和功能
 
 ### 核心数据模型
 

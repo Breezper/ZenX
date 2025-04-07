@@ -28,8 +28,8 @@ void createNewSession(WidgetRef ref) {
   // 设置当前会话ID为null（表示新会话）
   ref.read(currentSessionIdProvider.notifier).state = null;
   
-  // 添加助手欢迎消息
-  addAssistantWelcomeMessage(ref, currentAssistant.name, currentAssistant.description);
+  // 移除助手欢迎消息
+  // addAssistantWelcomeMessage(ref, currentAssistant.name, currentAssistant.description);
 }
 
 // 添加消息

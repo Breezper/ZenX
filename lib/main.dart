@@ -101,15 +101,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   @override
   void initState() {
     super.initState();
-    // 初始化欢迎消息
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final currentAssistant = ref.read(currentAssistantProvider);
-      addAssistantWelcomeMessage(
-        ref, 
-        currentAssistant.name, 
-        currentAssistant.description
-      );
-    });
+    // 初始化时不再添加欢迎消息
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   final currentAssistant = ref.read(currentAssistantProvider);
+    //   addAssistantWelcomeMessage(
+    //     ref, 
+    //     currentAssistant.name, 
+    //     currentAssistant.description
+    //   );
+    // });
   }
   
   @override
