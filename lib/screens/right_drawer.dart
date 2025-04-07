@@ -24,6 +24,11 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
   String _apiKeyName = 'openai';
   String _urlKeyName = 'openai_url';
   
+  // 添加标记来确保模型只被获取一次
+  bool _modelsInitialized = false;
+  // 添加标记来避免系统提示词被重置
+  bool _valuesInitialized = false;
+  
   final Map<String, List<String>> _defaultModelOptions = {
     'openai': ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
     'anthropic': ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
@@ -39,46 +44,42 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     // 在控制器初始化后再调用后续方法
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeValues();
+      _valuesInitialized = true;
     });
   }
   
   @override
   void didUpdateWidget(RightSettingsDrawer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 当Provider的值改变时，更新控制器
+    // 当Provider的值改变时，更新控制器（仅在必要时）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeValues();
+      if (!_valuesInitialized) {
+        _initializeValues();
+        _valuesInitialized = true;
+      }
     });
   }
   
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 当依赖的Provider改变时，刷新数据
+    // 当依赖的Provider改变时，仅获取关键信息而不重新初始化所有值
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // 重新获取提供商列表
       if (!mounted) return;
       
-      final apiKeys = ref.read(apiKeysProvider);
-      final apiDisplayNames = ref.read(apiDisplayNamesProvider);
-      final visibleProviders = ref.read(visibleApiProvidersProvider);
-      
-      print("依赖更新 - 可见API提供商列表: ${visibleProviders.join(', ')}");
-      print("依赖更新 - API密钥列表: ${apiKeys.keys.where((key) => !key.contains('_url') && !key.contains('_model')).join(', ')}");
-      print("依赖更新 - API显示名称: $apiDisplayNames");
-      
-      setState(() {
-        // 明确触发状态更新，强制重建Widget
-      });
-      
-      _initializeValues();
+      // 仅更新UI
+      setState(() {});
     });
   }
   
   void _initializeValues() {
+    if (!mounted) return;
+    
     // 从Provider获取当前助手信息
     final currentAssistant = ref.read(currentAssistantProvider);
     final apiKeys = ref.read(apiKeysProvider);
+    
+    print("初始化右侧抽屉值 - 助手: ${currentAssistant.name}, 系统提示词: ${currentAssistant.systemPrompt}");
     
     // 直接更新文本，无需检查是否为null
     if (_systemPromptController.text != currentAssistant.systemPrompt) {
@@ -100,11 +101,14 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
       _streamingEnabled = currentAssistant.modelConfig.streamingEnabled;
     });
     
-    // 如果选择的是OpenAI兼容API，触发模型获取
-    _fetchCustomModelsIfNeeded();
+    // 如果选择的是OpenAI兼容API且模型还未初始化，触发模型获取
+    if (!_modelsInitialized) {
+      _fetchCustomModelsIfNeeded();
+      _modelsInitialized = true;
+    }
   }
   
-  // 根据需要获取自定义模型
+  // 根据需要获取自定义模型 - 只获取一次
   void _fetchCustomModelsIfNeeded() {
     final apiKeys = ref.read(apiKeysProvider);
     
@@ -122,11 +126,16 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
         // 标准化provider名称，确保与providerModelsProvider参数一致
         final providerKey = apiKeys.containsKey('openai_compatible') ? 'openai_compatible' : 'openai-compatible';
         
-        // 通过全局提供者获取模型
-        ref.read(apiModelsProvider.notifier).fetchModelsForProvider(providerKey);
-        
-        // 打印日志
-        print("正在获取 $providerKey 的模型列表...");
+        // 检查模型是否已获取
+        final models = ref.read(providerModelsProvider(providerKey));
+        if (models.isEmpty) {
+          // 只有在模型为空时获取
+          // 通过全局提供者获取模型
+          ref.read(apiModelsProvider.notifier).fetchModelsForProvider(providerKey);
+          print("正在获取 $providerKey 的模型列表...");
+        } else {
+          print("使用 $providerKey 的缓存模型列表: ${models.join(', ')}");
+        }
       }
     } 
     // 为自定义API获取模型
@@ -134,9 +143,17 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
       // 检查API密钥和URL是否存在
       if (apiKeys.containsKey(_selectedApiProvider) && 
           apiKeys.containsKey('${_selectedApiProvider}_url')) {
-        // 触发模型获取
-        ref.read(apiModelsProvider.notifier).fetchModelsForProvider(_selectedApiProvider);
-        print("正在获取自定义API ${_selectedApiProvider} 的模型列表...");
+        
+        // 检查模型是否已获取
+        final models = ref.read(providerModelsProvider(_selectedApiProvider));
+        if (models.isEmpty) {
+          // 只有在模型为空时获取
+          // 触发模型获取
+          ref.read(apiModelsProvider.notifier).fetchModelsForProvider(_selectedApiProvider);
+          print("正在获取自定义API ${_selectedApiProvider} 的模型列表...");
+        } else {
+          print("使用自定义API ${_selectedApiProvider} 的缓存模型列表: ${models.join(', ')}");
+        }
       }
     }
   }
