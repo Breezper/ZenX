@@ -110,9 +110,44 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   List<Widget> _buildApiConfigItems(BuildContext context, WidgetRef ref, Map<String, ApiConfig?> apiConfigs) {
+    // 获取API显示名称
+    final apiDisplayNames = ref.watch(apiDisplayNamesProvider);
+    // 获取API可见性
+    final apiVisibility = ref.watch(apiVisibilityProvider);
+    
+    // Debug log
+    print("构建API配置项，显示名称: $apiDisplayNames");
+    print("API可见性: $apiVisibility");
+    
     return apiConfigs.entries.map((entry) {
       final provider = entry.key;
       final config = entry.value;
+      
+      // 标准化提供商键名以匹配存储的键名
+      String providerKey;
+      if (provider.toLowerCase() == 'openai兼容') {
+        providerKey = 'openai_compatible';
+      } else {
+        providerKey = provider.toLowerCase();
+      }
+      
+      // 获取显示名称 - 先检查完整匹配，再检查不同格式，最后使用默认值
+      String displayName;
+      if (apiDisplayNames.containsKey(providerKey)) {
+        displayName = apiDisplayNames[providerKey]!;
+      } else if (providerKey == 'openai_compatible' && apiDisplayNames.containsKey('openai-compatible')) {
+        displayName = apiDisplayNames['openai-compatible']!;
+      } else {
+        displayName = provider;
+      }
+      
+      // Debug log
+      print("处理API提供商: $provider, 标准化键: $providerKey, 显示名称: $displayName");
+      
+      // 获取可见性
+      final isVisible = providerKey == 'openai_compatible' ? 
+                      (apiVisibility[providerKey] ?? apiVisibility['openai-compatible'] ?? true) : 
+                      (apiVisibility[providerKey] ?? true);
       
       return Card(
         margin: EdgeInsets.only(bottom: 12),
@@ -128,7 +163,7 @@ class SettingsScreen extends ConsumerWidget {
         child: ListTile(
           title: Row(
             children: [
-              Text(provider),
+              Text(displayName),
               SizedBox(width: 8),
               config != null
                   ? Container(
@@ -165,6 +200,25 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
+              if (isVisible == false)
+                Container(
+                  margin: EdgeInsets.only(left: 4),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '隐藏',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ),
             ],
           ),
           subtitle: config != null
@@ -309,11 +363,20 @@ class SettingsScreen extends ConsumerWidget {
   }
   
   void _configureApi(BuildContext context, WidgetRef ref, String provider, ApiConfig? config) {
+    // Debug logs
+    print("打开API配置对话框: $provider");
+    if (config != null) {
+      print("配置信息: API密钥长度: ${config.apiKey.length}, 基础URL: ${config.baseUrl}");
+    }
+    
+    // Standardize the provider name for OpenAI compatible APIs
+    String displayProvider = provider;
+    
     // 打开API配置页面
     showDialog(
       context: context,
       builder: (context) => ApiConfigDialog(
-        provider: provider,
+        provider: displayProvider,
         config: config,
         onSave: (newConfig) {
           // No need to call settings provider again - it's handled in the dialog
@@ -373,7 +436,9 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
   late TextEditingController _apiKeyController;
   late TextEditingController _baseUrlController;
   late TextEditingController _modelController;
+  late TextEditingController _displayNameController;
   bool _isValidating = false;
+  bool _isVisible = true;
   String? _validationError;
   List<String> _availableModels = [];
   final ApiService _apiService = ApiService();
@@ -381,6 +446,33 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
   @override
   void initState() {
     super.initState();
+    
+    // Get settings
+    final settings = ref.read(settingsProvider);
+    String providerKey = widget.provider.toLowerCase();
+    
+    // Handle provider key standardization for OpenAI compatible API
+    if (providerKey == 'openai兼容') {
+      providerKey = 'openai_compatible';
+    }
+    
+    // Debug log
+    print('初始化API配置对话框，提供商: ${widget.provider}，标准化键: $providerKey');
+    print('API显示名称: ${settings.apiDisplayNames}');
+    
+    // Get the saved display name for this provider
+    String? savedDisplayName;
+    
+    // Check for display name under both naming conventions for OpenAI compatible
+    if (providerKey == 'openai_compatible') {
+      savedDisplayName = settings.apiDisplayNames['openai_compatible'] ?? 
+                       settings.apiDisplayNames['openai-compatible'];
+      print('找到的OpenAI兼容API显示名称: $savedDisplayName');
+    } else {
+      savedDisplayName = settings.apiDisplayNames[providerKey];
+    }
+    
+    // Initialize controllers
     _apiKeyController = TextEditingController(
       text: widget.config?.apiKey ?? '',
     );
@@ -390,13 +482,26 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
     _modelController = TextEditingController(
       text: widget.config?.provider ?? '',
     );
+    _displayNameController = TextEditingController(
+      // Only use default display name if no saved name exists
+      text: savedDisplayName ?? _getDefaultDisplayName(),
+    );
+    
+    // Get the visibility status
+    if (providerKey == 'openai_compatible') {
+      _isVisible = settings.apiVisibility['openai_compatible'] ?? 
+                 settings.apiVisibility['openai-compatible'] ?? 
+                 true;
+    } else {
+      _isVisible = settings.apiVisibility[providerKey] ?? true;
+    }
     
     // 如果是已配置的OpenAI兼容API，尝试获取模型列表
-    if (widget.provider.toLowerCase() == 'openai兼容' && widget.config != null) {
+    if (providerKey == 'openai_compatible' && widget.config != null) {
       _fetchModels();
     }
   }
-  
+
   String _getDefaultBaseUrl() {
     switch (widget.provider.toLowerCase()) {
       case 'openai':
@@ -409,6 +514,23 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
         return 'http://localhost:8000';
       default:
         return '';
+    }
+  }
+  
+  String _getDefaultDisplayName() {
+    // Default display name is the capitalized provider name
+    final providerName = widget.provider;
+    switch (providerName.toLowerCase()) {
+      case 'openai':
+        return 'OpenAI';
+      case 'claude':
+        return 'Claude';
+      case 'gemini':
+        return 'Gemini';
+      case 'openai兼容':
+        return 'OpenAI兼容';
+      default:
+        return providerName.toUpperCase();
     }
   }
   
@@ -473,6 +595,7 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
     _apiKeyController.dispose();
     _baseUrlController.dispose();
     _modelController.dispose();
+    _displayNameController.dispose();
     super.dispose();
   }
   
@@ -480,13 +603,50 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
   Widget build(BuildContext context) {
     final bool isOpenAICompatible = widget.provider.toLowerCase() == 'openai兼容';
     
+    // Use the display name for the dialog title
+    final String dialogTitle = _displayNameController.text.isNotEmpty ? 
+                             _displayNameController.text : 
+                             widget.provider;
+    
     return AlertDialog(
-      title: Text('${widget.provider} 配置'),
+      title: Text('$dialogTitle 配置'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text('显示名称', style: AppTheme.titleTextStyle.copyWith(fontSize: 14)),
+            SizedBox(height: 8),
+            TextField(
+              controller: _displayNameController,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+                ),
+                hintText: '输入API显示名称',
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
+            ),
+            
+            SizedBox(height: 16),
+            SwitchListTile(
+              title: Text('在右侧抽屉显示'),
+              subtitle: Text('控制该API是否显示在右侧模型选择抽屉中'),
+              value: _isVisible,
+              contentPadding: EdgeInsets.zero,
+              activeColor: AppTheme.primaryBlue,
+              onChanged: (value) {
+                setState(() {
+                  _isVisible = value;
+                });
+              },
+            ),
+            
+            Divider(),
+            
             Text('API密钥', style: AppTheme.titleTextStyle.copyWith(fontSize: 14)),
             SizedBox(height: 8),
             TextField(
@@ -613,7 +773,14 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
   Future<void> _validateAndSave() async {
     final apiKey = _apiKeyController.text.trim();
     final baseUrl = _baseUrlController.text.trim();
+    final displayName = _displayNameController.text.trim();
     final isOpenAICompatible = widget.provider.toLowerCase() == 'openai兼容';
+    
+    // Standardize provider key
+    String providerKey = widget.provider.toLowerCase();
+    if (isOpenAICompatible) {
+      providerKey = 'openai_compatible';
+    }
     
     // Get the model name for OpenAI compatible API
     String modelName = _modelController.text.trim();
@@ -628,6 +795,13 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
     if (isOpenAICompatible && baseUrl.isEmpty) {
       setState(() {
         _validationError = '基础URL不能为空';
+      });
+      return;
+    }
+    
+    if (displayName.isEmpty) {
+      setState(() {
+        _validationError = '显示名称不能为空';
       });
       return;
     }
@@ -666,28 +840,35 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
       } else {
         // 对于其他API，直接验证密钥
         isValid = await _apiService.validateApiKey(
-          widget.provider.toLowerCase(),
+          providerKey,
           apiKey,
         );
       }
       
       if (isValid) {
-        String providerKey = widget.provider.toLowerCase();
         if (isOpenAICompatible) {
-          providerKey = 'openai_compatible';
+          // Log before saving to help debug
+          print('保存OpenAI兼容API配置:');
+          print('- 提供商: $providerKey');
+          print('- 显示名称: $displayName');
+          print('- 是否可见: $_isVisible');
           
           // For OpenAI-compatible API, save with additional metadata
           ref.read(settingsProvider.notifier).setApiConfig(
-            'openai_compatible',
+            providerKey,
             apiKey,
             baseUrl: baseUrl,
             model: modelName,
+            displayName: displayName,
+            isVisible: _isVisible,
           );
         } else {
-          // For other APIs, just save the API key
-          ref.read(settingsProvider.notifier).setApiKey(
+          // For other APIs, save with all settings
+          ref.read(settingsProvider.notifier).setApiConfig(
             providerKey,
             apiKey,
+            displayName: displayName,
+            isVisible: _isVisible,
           );
         }
         

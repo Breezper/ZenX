@@ -11,6 +11,10 @@ class Settings {
   // API Keys
   final Map<String, String> apiKeys;
   
+  // API Display Names and Visibility
+  final Map<String, String> apiDisplayNames;
+  final Map<String, bool> apiVisibility;
+  
   // Other preferences
   final bool enableStreamingResponses;
   final String language;
@@ -20,6 +24,8 @@ class Settings {
   const Settings({
     this.themeMode = ThemeMode.system,
     this.apiKeys = const {},
+    this.apiDisplayNames = const {},
+    this.apiVisibility = const {},
     this.enableStreamingResponses = true,
     this.language = 'zh_CN',
     this.enableSoundEffects = true,
@@ -29,6 +35,8 @@ class Settings {
   Settings copyWith({
     ThemeMode? themeMode,
     Map<String, String>? apiKeys,
+    Map<String, String>? apiDisplayNames,
+    Map<String, bool>? apiVisibility,
     bool? enableStreamingResponses,
     String? language,
     bool? enableSoundEffects,
@@ -37,6 +45,8 @@ class Settings {
     return Settings(
       themeMode: themeMode ?? this.themeMode,
       apiKeys: apiKeys ?? this.apiKeys,
+      apiDisplayNames: apiDisplayNames ?? this.apiDisplayNames,
+      apiVisibility: apiVisibility ?? this.apiVisibility,
       enableStreamingResponses: enableStreamingResponses ?? this.enableStreamingResponses,
       language: language ?? this.language,
       enableSoundEffects: enableSoundEffects ?? this.enableSoundEffects,
@@ -52,6 +62,8 @@ class Settings {
       'language': language,
       'enableSoundEffects': enableSoundEffects,
       'enableHapticFeedback': enableHapticFeedback,
+      'apiDisplayNames': apiDisplayNames,
+      'apiVisibility': apiVisibility,
       // API keys are stored separately in secure storage
     };
   }
@@ -64,6 +76,12 @@ class Settings {
       language: json['language'] ?? 'zh_CN',
       enableSoundEffects: json['enableSoundEffects'] ?? true,
       enableHapticFeedback: json['enableHapticFeedback'] ?? true,
+      apiDisplayNames: json['apiDisplayNames'] != null 
+          ? Map<String, String>.from(json['apiDisplayNames']) 
+          : {},
+      apiVisibility: json['apiVisibility'] != null 
+          ? Map<String, bool>.from(json['apiVisibility']) 
+          : {},
     );
   }
 }
@@ -139,7 +157,7 @@ class SettingsNotifier extends StateNotifier<Settings> {
   }
 
   // Set API configuration with additional metadata
-  Future<void> setApiConfig(String provider, String apiKey, {String? baseUrl, String? model}) async {
+  Future<void> setApiConfig(String provider, String apiKey, {String? baseUrl, String? model, String? displayName, bool? isVisible}) async {
     final updatedApiKeys = Map<String, String>.from(state.apiKeys);
     updatedApiKeys[provider] = apiKey;
     
@@ -152,8 +170,72 @@ class SettingsNotifier extends StateNotifier<Settings> {
       updatedApiKeys['${provider}_model'] = model;
     }
     
-    state = state.copyWith(apiKeys: updatedApiKeys);
+    // Update display name if provided
+    Map<String, String>? updatedDisplayNames;
+    if (displayName != null) {
+      updatedDisplayNames = Map<String, String>.from(state.apiDisplayNames);
+      updatedDisplayNames[provider] = displayName;
+    }
+    
+    // Update visibility if provided
+    Map<String, bool>? updatedVisibility;
+    if (isVisible != null) {
+      updatedVisibility = Map<String, bool>.from(state.apiVisibility);
+      updatedVisibility[provider] = isVisible;
+    }
+    
+    state = state.copyWith(
+      apiKeys: updatedApiKeys,
+      apiDisplayNames: updatedDisplayNames,
+      apiVisibility: updatedVisibility,
+    );
+    
     await _saveSettings();
+  }
+
+  // Set API display name
+  Future<void> setApiDisplayName(String provider, String displayName) async {
+    final updatedDisplayNames = Map<String, String>.from(state.apiDisplayNames);
+    updatedDisplayNames[provider] = displayName;
+    state = state.copyWith(apiDisplayNames: updatedDisplayNames);
+    await _saveSettings();
+  }
+
+  // Set API visibility
+  Future<void> setApiVisibility(String provider, bool isVisible) async {
+    final updatedVisibility = Map<String, bool>.from(state.apiVisibility);
+    updatedVisibility[provider] = isVisible;
+    state = state.copyWith(apiVisibility: updatedVisibility);
+    await _saveSettings();
+  }
+
+  // Get API display name
+  String getApiDisplayName(String provider) {
+    return state.apiDisplayNames[provider] ?? provider.toUpperCase();
+  }
+
+  // Get API visibility
+  bool getApiVisibility(String provider) {
+    return state.apiVisibility[provider] ?? true; // Default is visible
+  }
+
+  // Get all visible API providers
+  List<String> getVisibleApiProviders() {
+    final List<String> result = [];
+    
+    // Get all API providers with keys
+    final apiProviders = state.apiKeys.keys.where(
+      (key) => !key.contains('_url') && !key.contains('_model')
+    ).toList();
+    
+    // Filter by visibility
+    for (var provider in apiProviders) {
+      if (getApiVisibility(provider)) {
+        result.add(provider);
+      }
+    }
+    
+    return result;
   }
 
   // Remove API key
@@ -212,6 +294,18 @@ final themeModeProvider = Provider<ThemeMode>((ref) {
 
 final apiKeysProvider = Provider<Map<String, String>>((ref) {
   return ref.watch(settingsProvider).apiKeys;
+});
+
+final apiDisplayNamesProvider = Provider<Map<String, String>>((ref) {
+  return ref.watch(settingsProvider).apiDisplayNames;
+});
+
+final apiVisibilityProvider = Provider<Map<String, bool>>((ref) {
+  return ref.watch(settingsProvider).apiVisibility;
+});
+
+final visibleApiProvidersProvider = Provider<List<String>>((ref) {
+  return ref.read(settingsProvider.notifier).getVisibleApiProviders();
 });
 
 final streamingResponsesProvider = Provider<bool>((ref) {

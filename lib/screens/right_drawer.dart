@@ -54,14 +54,23 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
   void _initializeValues() {
     // 从Provider获取当前助手信息
     final currentAssistant = ref.read(currentAssistantProvider);
+    final apiKeys = ref.read(apiKeysProvider);
     
     // 直接更新文本，无需检查是否为null
     if (_systemPromptController.text != currentAssistant.systemPrompt) {
       _systemPromptController.text = currentAssistant.systemPrompt;
     }
     
+    // 检查apiProvider格式，统一处理命名不一致的问题
+    String apiProvider = currentAssistant.modelConfig.apiProvider;
+    
+    // 标准化API提供商命名
+    if (apiProvider == 'openai-compatible' || apiProvider == 'openai_compatible') {
+      apiProvider = apiKeys.containsKey('openai_compatible') ? 'openai_compatible' : 'openai-compatible';
+    }
+    
     setState(() {
-      _selectedApiProvider = currentAssistant.modelConfig.apiProvider;
+      _selectedApiProvider = apiProvider;
       _selectedModel = currentAssistant.modelConfig.modelName;
       _contextLength = currentAssistant.modelConfig.contextLength;
       _streamingEnabled = currentAssistant.modelConfig.streamingEnabled;
@@ -76,7 +85,8 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     final apiKeys = ref.read(apiKeysProvider);
     
     // 检查是否有OpenAI兼容API配置
-    if (_selectedApiProvider == 'openai-compatible') {
+    // 支持两种命名风格：openai-compatible 和 openai_compatible
+    if (_selectedApiProvider == 'openai-compatible' || _selectedApiProvider == 'openai_compatible') {
       // 检查可能的键名
       final hasApiKey = apiKeys.containsKey('openai-compatible') || apiKeys.containsKey('openai_compatible');
       final hasBaseUrl = apiKeys.containsKey('openai-compatible_url') || 
@@ -85,8 +95,14 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
                         apiKeys.containsKey('openai_compatible-url');
       
       if (hasApiKey && hasBaseUrl) {
+        // 标准化provider名称，确保与providerModelsProvider参数一致
+        final providerKey = apiKeys.containsKey('openai_compatible') ? 'openai_compatible' : 'openai-compatible';
+        
         // 通过全局提供者获取模型
-        ref.read(apiModelsProvider.notifier).fetchModelsForProvider('openai-compatible');
+        ref.read(apiModelsProvider.notifier).fetchModelsForProvider(providerKey);
+        
+        // 打印日志
+        print("正在获取 $providerKey 的模型列表...");
       }
     }
   }
@@ -106,6 +122,10 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     final currentAssistant = ref.watch(currentAssistantProvider);
     // 获取API keys
     final apiKeys = ref.watch(apiKeysProvider);
+    // 获取API显示名称
+    final apiDisplayNames = ref.watch(apiDisplayNamesProvider);
+    // 获取可见的API提供商
+    final visibleProviders = ref.watch(visibleApiProvidersProvider);
     
     // DEBUG: 打印API配置信息
     print("==== API Keys Debug ====");
@@ -274,9 +294,61 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
   Widget _buildProviderDropdown() {
     // 获取有API密钥的提供商
     final apiKeys = ref.watch(apiKeysProvider);
+    // 获取API显示名称
+    final apiDisplayNames = ref.watch(apiDisplayNamesProvider);
+    // 获取可见的API提供商
+    final visibleProviders = ref.watch(visibleApiProvidersProvider);
+    
+    // Debug 输出
+    print("可见API提供商列表: ${visibleProviders.join(', ')}");
     
     // 添加OpenAI兼容API到选项中
-    final List<String> providers = [..._defaultModelOptions.keys];
+    final List<String> availableProviders = [..._defaultModelOptions.keys];
+    
+    // 筛选出可见的提供商
+    final List<String> providers = availableProviders.where((provider) {
+      // 检查是否配置了API key
+      final hasKey = apiKeys.containsKey(provider) && apiKeys[provider]?.isNotEmpty == true;
+      
+      // 特殊处理OpenAI兼容API
+      if (provider == 'openai-compatible') {
+        // 尝试两种可能的键名
+        final hasCompatibleKey = apiKeys.containsKey('openai-compatible') || 
+                                apiKeys.containsKey('openai_compatible');
+        final hasBaseUrl = apiKeys.containsKey('openai-compatible_url') || 
+                          apiKeys.containsKey('openai_compatible_url') ||
+                          apiKeys.containsKey('openai-compatible-url') ||
+                          apiKeys.containsKey('openai_compatible-url');
+        
+        // 对于OpenAI兼容API，检查是否在可见列表中
+        if (hasCompatibleKey && hasBaseUrl) {
+          // 考虑两种可能的键名
+          return visibleProviders.contains('openai_compatible') || 
+                 visibleProviders.contains('openai-compatible');
+        }
+        return false;
+      }
+      
+      // 对于其他提供商，检查是否在可见列表中
+      return hasKey && visibleProviders.contains(provider);
+    }).toList();
+    
+    // 如果没有可见的提供商，添加一个默认选项
+    if (providers.isEmpty && _defaultModelOptions.isNotEmpty) {
+      providers.add(_defaultModelOptions.keys.first);
+    }
+    
+    // 如果当前选择的提供商不在列表中，默认选第一个
+    if (!providers.contains(_selectedApiProvider) && providers.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _selectedApiProvider = providers.first;
+          // 更新密钥名，确保下面的警告信息正确
+          _apiKeyName = _selectedApiProvider;
+          _urlKeyName = '${_selectedApiProvider}_url';
+        });
+      });
+    }
     
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12),
@@ -295,16 +367,34 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
           value: providers.contains(_selectedApiProvider) ? _selectedApiProvider : providers.first,
           items: providers.map((provider) {
             bool hasKey = apiKeys.containsKey(provider) && apiKeys[provider]?.isNotEmpty == true;
-            // OpenAI兼容API还需要检查URL
+            
+            // 特殊处理OpenAI兼容API
             if (provider == 'openai-compatible') {
-              hasKey = hasKey && apiKeys.containsKey('openai-compatible_url') && 
-                      apiKeys['openai-compatible_url']?.isNotEmpty == true;
+              hasKey = (apiKeys.containsKey('openai-compatible') || apiKeys.containsKey('openai_compatible')) &&
+                       (apiKeys.containsKey('openai-compatible_url') || apiKeys.containsKey('openai_compatible_url'));
+              
+              // 使用自定义显示名称或默认名称
+              String displayName = apiDisplayNames['openai_compatible'] ?? 
+                                 apiDisplayNames['openai-compatible'] ?? 
+                                 'OPENAI兼容API';
+                                 
+              return DropdownMenuItem<String>(
+                value: provider,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(displayName),
+                    if (hasKey)
+                      Icon(Icons.check_circle, color: Colors.green, size: 16)
+                    else
+                      Icon(Icons.error_outline, color: Colors.orange, size: 16),
+                  ],
+                ),
+              );
             }
             
-            String displayName = provider.toUpperCase();
-            if (provider == 'openai-compatible') {
-              displayName = 'OPENAI兼容API';
-            }
+            // 常规API处理
+            String displayName = apiDisplayNames[provider] ?? provider.toUpperCase();
             
             return DropdownMenuItem<String>(
               value: provider,
@@ -330,6 +420,20 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
                   _fetchCustomModelsIfNeeded();
                 }
                 
+                // 更新API键名，确保警告信息正确
+                _apiKeyName = value;
+                _urlKeyName = '${value}_url';
+                
+                // 特殊处理OpenAI兼容API的键名
+                if (value == 'openai-compatible') {
+                  if (!apiKeys.containsKey('openai-compatible') && apiKeys.containsKey('openai_compatible')) {
+                    _apiKeyName = 'openai_compatible';
+                  }
+                  if (!apiKeys.containsKey('openai-compatible_url') && apiKeys.containsKey('openai_compatible_url')) {
+                    _urlKeyName = 'openai_compatible_url';
+                  }
+                }
+                
                 // 选择默认模型
                 final defaultModels = _defaultModelOptions[value] ?? [];
                 if (defaultModels.isNotEmpty) {
@@ -348,26 +452,71 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     List<String> models = [];
     bool isLoading = false;
     
+    // 标准化provider名称
+    final providerKey = _selectedApiProvider == 'openai_compatible' ? 'openai_compatible' : 
+                        _selectedApiProvider == 'openai-compatible' ? 'openai-compatible' : 
+                        _selectedApiProvider;
+    
     // 获取全局缓存的模型列表
-    if (_selectedApiProvider == 'openai-compatible') {
-      models = ref.watch(providerModelsProvider('openai-compatible'));
-      isLoading = ref.watch(isLoadingModelsProvider('openai-compatible'));
+    if (providerKey == 'openai_compatible' || providerKey == 'openai-compatible') {
+      // 尝试获取两种命名风格的模型
+      final compatibleModels1 = ref.watch(providerModelsProvider('openai_compatible'));
+      final compatibleModels2 = ref.watch(providerModelsProvider('openai-compatible'));
+      
+      // 使用非空的模型列表
+      if (compatibleModels1.isNotEmpty) {
+        models = compatibleModels1;
+        isLoading = ref.watch(isLoadingModelsProvider('openai_compatible'));
+      } else if (compatibleModels2.isNotEmpty) {
+        models = compatibleModels2;
+        isLoading = ref.watch(isLoadingModelsProvider('openai-compatible'));
+      } else {
+        // 如果两种命名都没有获取到模型，使用其中一个的加载状态
+        isLoading = ref.watch(isLoadingModelsProvider('openai_compatible')) || 
+                    ref.watch(isLoadingModelsProvider('openai-compatible'));
+      }
       
       // 如果没有获取到模型，使用默认列表
       if (models.isEmpty && !isLoading) {
         models = _defaultModelOptions['openai-compatible'] ?? [];
       }
+      
+      // 打印调试日志
+      print("OpenAI兼容API模型列表：${models.join(', ')}");
+      print("OpenAI兼容API模型获取状态：${isLoading ? '加载中' : '已完成'}");
     } else {
-      models = _defaultModelOptions[_selectedApiProvider] ?? [];
+      models = _defaultModelOptions[providerKey] ?? [];
     }
     
     // 检查自定义模型
     final apiKeys = ref.watch(apiKeysProvider);
-    final customModelKey = '${_selectedApiProvider}_model';
-    if (apiKeys.containsKey(customModelKey) && apiKeys[customModelKey]?.isNotEmpty == true) {
-      final customModel = apiKeys[customModelKey]!;
-      if (!models.contains(customModel)) {
-        models.add(customModel);
+    
+    // 针对openai_compatible检查多种可能的键名
+    if (providerKey == 'openai_compatible' || providerKey == 'openai-compatible') {
+      final possibleModelKeys = [
+        'openai_compatible_model',
+        'openai-compatible_model',
+        'openai_compatible-model',
+        'openai-compatible-model'
+      ];
+      
+      for (final key in possibleModelKeys) {
+        if (apiKeys.containsKey(key) && apiKeys[key]?.isNotEmpty == true) {
+          final customModel = apiKeys[key]!;
+          if (!models.contains(customModel)) {
+            models.add(customModel);
+            print("找到自定义模型：$customModel");
+          }
+        }
+      }
+    } else {
+      // 常规API的模型处理
+      final customModelKey = '${providerKey}_model';
+      if (apiKeys.containsKey(customModelKey) && apiKeys[customModelKey]?.isNotEmpty == true) {
+        final customModel = apiKeys[customModelKey]!;
+        if (!models.contains(customModel)) {
+          models.add(customModel);
+        }
       }
     }
     
