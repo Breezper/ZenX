@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zenx/api/openai_compatible_api.dart';
 import 'package:zenx/models/api_config.dart';
 import 'package:zenx/states/settings_provider.dart';
+import 'package:zenx/api/custom_api.dart';
 
 /// 存储各提供商API模型的状态类
 class ApiModelsState {
@@ -56,7 +57,20 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
       await fetchModelsForProvider(standardProvider);
     }
     
-    // 可以在这里添加其他API提供商的模型列表初始化
+    // 初始化所有自定义API提供商的模型
+    for (final key in apiKeys.keys) {
+      // 跳过URL和模型键以及已知的内置API
+      if (!key.contains('_url') && 
+          !key.contains('_model') && 
+          !['openai', 'openai_compatible', 'claude', 'gemini'].contains(key)) {
+        
+        // 只处理有URL的自定义API
+        if (apiKeys.containsKey('${key}_url')) {
+          print("初始化自定义API模型: $key");
+          await fetchModelsForProvider(key);
+        }
+      }
+    }
   }
   
   // 检查是否有OpenAI兼容API的配置，支持不同的键名格式
@@ -138,7 +152,45 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
           isLoadingByProvider: loadingState,
         );
       }
-      // 可以添加其他提供商的处理
+      // 处理自定义API提供商
+      else if (apiKeys.containsKey(standardProvider) && 
+               apiKeys.containsKey('${standardProvider}_url')) {
+        // 创建API配置
+        final apiKey = apiKeys[standardProvider] ?? '';
+        final baseUrl = apiKeys['${standardProvider}_url'] ?? '';
+        final apiDisplayNames = ref.read(apiDisplayNamesProvider);
+        final displayName = apiDisplayNames[standardProvider] ?? standardProvider;
+        
+        final config = ApiConfig(
+          provider: standardProvider,
+          apiKey: apiKey,
+          baseUrl: baseUrl,
+          headers: {},
+        );
+        
+        // 创建自定义API实例并获取模型
+        final api = CustomAPI(name: displayName);
+        models = await api.fetchModels(config);
+        
+        // 如果未获取到模型，至少添加一个默认模型
+        if (models.isEmpty) {
+          models = ['custom-model'];
+        }
+        
+        print("自定义API $standardProvider 模型列表：${models.join(", ")}");
+        
+        // 更新模型列表
+        final modelsList = Map<String, List<String>>.from(state.modelsByProvider);
+        modelsList[standardProvider] = models;
+        
+        // 更新加载状态
+        loadingState[standardProvider] = false;
+        
+        state = state.copyWith(
+          modelsByProvider: modelsList,
+          isLoadingByProvider: loadingState,
+        );
+      }
       else {
         // 默认实现
         // 更新模型列表

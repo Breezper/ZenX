@@ -51,6 +51,30 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     });
   }
   
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 当依赖的Provider改变时，刷新数据
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 重新获取提供商列表
+      if (!mounted) return;
+      
+      final apiKeys = ref.read(apiKeysProvider);
+      final apiDisplayNames = ref.read(apiDisplayNamesProvider);
+      final visibleProviders = ref.read(visibleApiProvidersProvider);
+      
+      print("依赖更新 - 可见API提供商列表: ${visibleProviders.join(', ')}");
+      print("依赖更新 - API密钥列表: ${apiKeys.keys.where((key) => !key.contains('_url') && !key.contains('_model')).join(', ')}");
+      print("依赖更新 - API显示名称: $apiDisplayNames");
+      
+      setState(() {
+        // 明确触发状态更新，强制重建Widget
+      });
+      
+      _initializeValues();
+    });
+  }
+  
   void _initializeValues() {
     // 从Provider获取当前助手信息
     final currentAssistant = ref.read(currentAssistantProvider);
@@ -103,6 +127,16 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
         
         // 打印日志
         print("正在获取 $providerKey 的模型列表...");
+      }
+    } 
+    // 为自定义API获取模型
+    else if (!['openai', 'claude', 'gemini'].contains(_selectedApiProvider)) {
+      // 检查API密钥和URL是否存在
+      if (apiKeys.containsKey(_selectedApiProvider) && 
+          apiKeys.containsKey('${_selectedApiProvider}_url')) {
+        // 触发模型获取
+        ref.read(apiModelsProvider.notifier).fetchModelsForProvider(_selectedApiProvider);
+        print("正在获取自定义API ${_selectedApiProvider} 的模型列表...");
       }
     }
   }
@@ -301,9 +335,33 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     
     // Debug 输出
     print("可见API提供商列表: ${visibleProviders.join(', ')}");
+    print("API密钥列表: ${apiKeys.keys.where((key) => !key.contains('_url') && !key.contains('_model')).join(', ')}");
+    print("API显示名称: $apiDisplayNames");
     
-    // 添加OpenAI兼容API到选项中
+    // 添加内置API到选项中
     final List<String> availableProviders = [..._defaultModelOptions.keys];
+    
+    // 添加自定义API提供商
+    for (final key in apiKeys.keys) {
+      if (!key.contains('_url') && 
+          !key.contains('_model') && 
+          !availableProviders.contains(key) &&
+          !['openai', 'claude', 'gemini', 'openai_compatible', 'openai-compatible'].contains(key)) {
+        // 添加自定义API
+        availableProviders.add(key);
+        print("添加自定义API提供商: $key (显示名称: ${apiDisplayNames[key] ?? key})");
+      }
+    }
+    
+    // 确保可见的自定义API都被添加到列表
+    for (final key in apiDisplayNames.keys) {
+      if (!availableProviders.contains(key) && 
+          !key.contains('_url') && 
+          !key.contains('_model')) {
+        availableProviders.add(key);
+        print("从显示名称映射添加API提供商: $key (显示名称: ${apiDisplayNames[key]})");
+      }
+    }
     
     // 筛选出可见的提供商
     final List<String> providers = availableProviders.where((provider) {
@@ -330,6 +388,15 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
       }
       
       // 对于其他提供商，检查是否在可见列表中
+      // 如果是自定义API且未在默认列表中，优先展示出来
+      if (!_defaultModelOptions.containsKey(provider)) {
+        // 有API密钥 或者 在显示名称列表中且设置为可见
+        return hasKey || 
+              (apiDisplayNames.containsKey(provider) && 
+               (visibleProviders.contains(provider) || 
+                !apiKeys.containsKey(provider)));
+      }
+      
       return hasKey && visibleProviders.contains(provider);
     }).toList();
     
@@ -341,12 +408,14 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
     // 如果当前选择的提供商不在列表中，默认选第一个
     if (!providers.contains(_selectedApiProvider) && providers.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        setState(() {
-          _selectedApiProvider = providers.first;
-          // 更新密钥名，确保下面的警告信息正确
-          _apiKeyName = _selectedApiProvider;
-          _urlKeyName = '${_selectedApiProvider}_url';
-        });
+        if (mounted) {
+          setState(() {
+            _selectedApiProvider = providers.first;
+            // 更新密钥名，确保下面的警告信息正确
+            _apiKeyName = _selectedApiProvider;
+            _urlKeyName = '${_selectedApiProvider}_url';
+          });
+        }
       });
     }
     
@@ -396,12 +465,38 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
             // 常规API处理
             String displayName = apiDisplayNames[provider] ?? provider.toUpperCase();
             
+            // 自定义API处理 - 标记为自定义，以便区分
+            bool isCustomApi = !_defaultModelOptions.containsKey(provider) && 
+                             !['openai', 'claude', 'gemini', 'openai_compatible', 'openai-compatible'].contains(provider);
+            
             return DropdownMenuItem<String>(
               value: provider,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(displayName),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Text(displayName),
+                        if (isCustomApi) 
+                          Container(
+                            margin: EdgeInsets.only(left: 4),
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '自定义',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                   if (hasKey)
                     Icon(Icons.check_circle, color: Colors.green, size: 16)
                   else
@@ -484,8 +579,31 @@ class _RightSettingsDrawerState extends ConsumerState<RightSettingsDrawer> {
       // 打印调试日志
       print("OpenAI兼容API模型列表：${models.join(', ')}");
       print("OpenAI兼容API模型获取状态：${isLoading ? '加载中' : '已完成'}");
-    } else {
+    } else if (_defaultModelOptions.containsKey(providerKey)) {
+      // 使用默认内置的模型列表
       models = _defaultModelOptions[providerKey] ?? [];
+    } else {
+      // 处理自定义API的情况
+      // 首先尝试从全局模型提供者获取模型列表
+      final customModels = ref.watch(providerModelsProvider(providerKey));
+      isLoading = ref.watch(isLoadingModelsProvider(providerKey));
+      
+      if (customModels.isNotEmpty) {
+        models = customModels;
+        print("从全局提供者获取到 ${providerKey} 的模型列表: ${models.join(", ")}");
+      } else {
+        // 如果没有模型，检查是否有保存的单个模型名称
+        final apiKeys = ref.watch(apiKeysProvider);
+        final modelKey = '${providerKey}_model';
+        if (apiKeys.containsKey(modelKey) && apiKeys[modelKey]!.isNotEmpty) {
+          models = [apiKeys[modelKey]!];
+        } else {
+          // 自定义API的默认模型
+          models = ['custom-model'];
+        }
+      }
+      
+      print("自定义API ${providerKey} 模型列表：${models.join(', ')}");
     }
     
     // 检查自定义模型

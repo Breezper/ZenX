@@ -46,7 +46,8 @@
 │   │   ├── base_chat_api.dart # 抽象接口
 │   │   ├── openai_api.dart 
 │   │   ├── gemini_api.dart
-│   │   └── claude_api.dart
+│   │   ├── claude_api.dart
+│   │   └── custom_api.dart   # 通用自定义API实现
 │   ├── 📂 models          # 数据模型
 │   │   ├── message.dart    # 消息对象
 │   │   ├── assistant.dart  # 助手角色对象
@@ -170,6 +171,7 @@ class ChatSession {
 3. 图片上传功能实现
 4. 设置界面与功能完善
 5. 性能优化与测试
+6. 自定义API提供商添加功能
 
 ## 六、零基础AI辅助开发方法
 
@@ -259,3 +261,45 @@ dependencies:
   shared_preferences: ^2.1.1
   image_picker: ^0.8.7
 ``` 
+
+## 十一、自定义API支持
+
+### 自定义API数据流
+```
+┌──────────────────┐        ┌───────────────────┐        ┌──────────────────┐
+│                  │        │                   │        │                  │
+│  AddNewApiDialog │ ─────> │  CustomAPI 创建   │ ─────> │ ApiService 注册  │
+│                  │        │                   │        │                  │
+└──────────────────┘        └───────────────────┘        └──────────────────┘
+         │                                                        │
+         │                                                        │
+         ▼                                                        ▼
+┌──────────────────┐                                   ┌──────────────────┐
+│                  │                                   │                  │
+│ settingsProvider │ <────────────────────────────────│  聊天界面调用    │
+│   保存配置信息   │                                   │                  │
+│                  │                                   │                  │
+└──────────────────┘                                   └──────────────────┘
+```
+
+### 自定义API实现流程
+1. 用户输入自定义API标识符和显示名称
+2. 系统创建CustomAPI实例并注册到ApiService
+3. 将API显示名称保存到settingsProvider
+4. 打开API配置对话框，设置API密钥和基础URL
+5. 所有配置保存到settingsProvider的安全存储中
+6. 聊天界面和其他组件通过ApiService访问注册的API
+
+### 自定义API调用序列
+```
+聊天界面 ─> ApiService.getApi(provider) ─> 获取CustomAPI实例 ─> 调用sendMessage方法
+             │                                   │
+             │                                   │
+             ▼                                   ▼
+        settingsProvider                  构建HTTP请求
+        获取API配置信息                   发送到自定义API端点
+```
+
+### 支持的自定义API类型
+1. **OpenAI兼容API**: 完全兼容OpenAI API格式的第三方服务
+2. **通用自定义API**: 支持基本的聊天功能，使用简化的请求/响应格式 

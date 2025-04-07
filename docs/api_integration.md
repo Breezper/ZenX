@@ -1,282 +1,144 @@
-# ZenX AI聊天应用 API集成指南
+# ZenX API集成方案
 
-## 一、支持的API服务商
+## 1. 概述
 
-ZenX应用计划支持以下主流AI服务商的API：
+ZenX支持多种AI服务提供商的API集成，包括：
 
-| 服务商 | API版本 | 支持模型 | 特点 |
-|-------|---------|---------|------|
-| OpenAI | GPT-API | GPT-4o, GPT-3.5-Turbo | 强大的通用能力，流式响应 |
-| Anthropic | Claude API | Claude 3 Opus, Sonnet, Haiku | 长上下文支持，安全性 |
-| Google | Gemini API | Gemini Pro, Ultra | 多模态支持 |
-| Mistral AI | API | Mistral Medium, Large | 开放、高效 |
-| Ollama | API | 多种开源模型 | 本地部署选项 |
+- OpenAI (ChatGPT)
+- Claude (Anthropic)
+- Gemini (Google)
+- OpenAI兼容API
+- 自定义API提供商
 
-## 二、API集成架构
+本文档详细介绍各API的集成方案、验证方式和数据流。
 
-### 统一接口设计
+## 2. API架构设计
 
-所有API服务商通过统一抽象接口实现，确保可插拔和一致性：
+### 2.1 核心类
+
+- `BaseChatAPI`: 所有API实现的抽象基类
+- `ApiService`: 管理和提供各种API实现的服务类
+- `ApiConfig`: API配置数据模型
+- `SettingsProvider`: 存储和管理API配置的状态提供者
+
+### 2.2 API数据流
+
+```
+┌───────────────┐       ┌───────────────┐       ┌───────────────┐
+│               │       │               │       │               │
+│ 设置界面/对话框 │ ────> │SettingsProvider│ ────> │  ApiService   │
+│               │       │               │       │               │
+└───────────────┘       └───────────────┘       └───────────────┘
+                                                       │
+                                                       │
+                                                       ▼
+┌───────────────┐       ┌───────────────┐       ┌───────────────┐
+│               │       │               │       │               │
+│  聊天界面      │ <──── │  BaseChatAPI   │ <──── │ API具体实现类  │
+│               │       │ 实现类         │       │               │
+└───────────────┘       └───────────────┘       └───────────────┘
+```
+
+## 3. 已支持的API服务商
+
+### 3.1 OpenAI
+
+- **基本URL**: https://api.openai.com/v1
+- **支持模型**: gpt-3.5-turbo, gpt-4, gpt-4o等
+- **验证方式**: 通过GET /models验证API密钥
+
+### 3.2 Claude
+
+- **基本URL**: https://api.anthropic.com/v1
+- **支持模型**: claude-3-opus, claude-3-sonnet等
+- **验证方式**: 通过API密钥验证请求
+
+### 3.3 Gemini
+
+- **基本URL**: https://generativelanguage.googleapis.com/v1beta
+- **支持模型**: gemini-pro, gemini-pro-vision等
+- **验证方式**: 通过API密钥验证
+
+### 3.4 OpenAI兼容API
+
+- **基本URL**: 用户自定义（默认为http://localhost:8000）
+- **支持模型**: 从API服务获取或用户设置
+- **验证方式**: 与OpenAI兼容的/models端点验证
+
+## 4. 自定义API支持
+
+### 4.1 添加自定义API
+
+用户可以通过以下步骤添加自定义API：
+
+1. 在设置界面点击"添加新API"
+2. 输入API标识符和显示名称
+3. 设置API密钥和基础URL
+4. 对于OpenAI兼容API，可选择获取可用模型
+
+### 4.2 自定义API实现
+
+`CustomAPI`类提供了通用的实现，支持：
+
+- 标准的OpenAI兼容格式
+- 简化的聊天消息格式
+- 灵活的请求/响应处理
+
+### 4.3 自定义API注册
+
+1. 应用启动时，通过`StartupService`初始化所有自定义API
+2. 每个自定义API都会被注册到`ApiService`
+3. 注册的API可以与内置API一样被调用和使用
+
+### 4.4 自定义API数据存储
+
+- API密钥通过`flutter_secure_storage`安全存储
+- API配置保存在`SettingsProvider`中
+- 显示名称和可见性设置也保存在`SettingsProvider`中
+
+## 5. API调用流程
+
+### 5.1 标准调用过程
 
 ```dart
-abstract class BaseChatAPI {
-  // 发送消息并返回流式响应
-  Future<StreamedResponse> sendMessage({
-    required String message,
-    required MessageHistory history,
-    required ApiConfig config
-  });
-  
-  // 获取服务商名称
-  String get vendorName;
-  
-  // 获取品牌颜色
-  Color get brandColor;
-  
-  // 获取支持的模型列表
-  List<String> get supportedModels;
-  
-  // 检查API配置是否有效
-  Future<bool> validateApiKey(String apiKey);
-}
+// 获取API配置
+final config = ApiConfig(
+  provider: 'openai',  // 或自定义API的标识符
+  apiKey: 'sk-...',
+  baseUrl: 'https://...',
+);
+
+// 获取API服务
+final apiService = ApiService();
+
+// 发送消息
+final response = await apiService.sendMessage(
+  message: '你好，AI助手',
+  history: MessageHistory(...),
+  config: config,
+);
+
+// 处理流式响应
+response.textStream.listen((text) {
+  // 处理文本块
+});
 ```
 
-### 流式响应处理
+### 5.2 错误处理
 
-使用Dart Streams处理AI的实时响应：
+API调用可能遇到以下错误：
 
-```dart
-class StreamedResponse {
-  final Stream<String> textStream;
-  final Stream<Map<String, dynamic>>? metadataStream;
-  
-  StreamedResponse({
-    required this.textStream,
-    this.metadataStream,
-  });
-}
-```
+- API密钥无效
+- 网络连接问题
+- 服务器错误
+- 超出速率限制
 
-## 三、API密钥管理
+每种错误都会有适当的处理和用户友好的提示。
 
-### 安全存储
-- 使用`flutter_secure_storage`加密存储所有API密钥
-- 应用内存中仅保留会话期间需要的密钥
-- 支持生物识别验证（可选）
+## 6. 未来扩展计划
 
-### 密钥验证流程
-```mermaid
-sequenceDiagram
-  participant User
-  participant App
-  participant SecureStorage
-  participant AI_API
-  
-  User->>App: 输入API密钥
-  App->>AI_API: 发送验证请求
-  AI_API-->>App: 返回验证结果
-  alt 验证成功
-    App->>SecureStorage: 加密存储密钥
-    App-->>User: 显示成功消息
-  else 验证失败
-    App-->>User: 显示错误信息
-  end
-```
-
-## 四、实现指南
-
-### OpenAI API实现示例
-
-```dart
-class OpenAIAPI extends BaseChatAPI {
-  @override
-  String get vendorName => 'OpenAI';
-  
-  @override
-  Color get brandColor => const Color(0xFF10A37F);
-  
-  @override
-  List<String> get supportedModels => [
-    'gpt-4o', 
-    'gpt-4-turbo', 
-    'gpt-3.5-turbo'
-  ];
-  
-  @override
-  Future<StreamedResponse> sendMessage({
-    required String message,
-    required MessageHistory history,
-    required ApiConfig config,
-  }) async {
-    final dio = Dio();
-    dio.options.headers['Authorization'] = 'Bearer ${config.apiKey}';
-    dio.options.headers['Content-Type'] = 'application/json';
-    
-    final List<Map<String, dynamic>> messages = [];
-    
-    // 添加历史消息
-    for (final msg in history.messages) {
-      messages.add({
-        'role': msg.isUser ? 'user' : 'assistant',
-        'content': msg.content,
-      });
-    }
-    
-    // 添加当前消息
-    messages.add({
-      'role': 'user',
-      'content': message,
-    });
-    
-    final response = await dio.post(
-      'https://api.openai.com/v1/chat/completions',
-      data: {
-        'model': config.modelName ?? 'gpt-3.5-turbo',
-        'messages': messages,
-        'stream': true,
-        'temperature': config.temperature ?? 0.7,
-      },
-      options: Options(
-        responseType: ResponseType.stream,
-      ),
-    );
-    
-    // 处理流式响应
-    final stream = response.data.stream.transform(
-      StreamTransformer.fromHandlers(
-        handleData: (data, sink) {
-          final String text = utf8.decode(data);
-          final List<String> lines = text.split('\n');
-          
-          for (var line in lines) {
-            if (line.startsWith('data: ') && line != 'data: [DONE]') {
-              final jsonData = line.substring(6);
-              try {
-                final Map<String, dynamic> json = jsonDecode(jsonData);
-                final choice = json['choices'][0];
-                final content = choice['delta']['content'];
-                if (content != null) {
-                  sink.add(content);
-                }
-              } catch (e) {
-                // 忽略解析错误
-              }
-            }
-          }
-        },
-      ),
-    );
-    
-    return StreamedResponse(textStream: stream);
-  }
-  
-  @override
-  Future<bool> validateApiKey(String apiKey) async {
-    try {
-      final dio = Dio();
-      dio.options.headers['Authorization'] = 'Bearer $apiKey';
-      
-      final response = await dio.get('https://api.openai.com/v1/models');
-      return response.statusCode == 200;
-    } catch (e) {
-      return false;
-    }
-  }
-}
-```
-
-### Claude API实现要点
-
-- 使用Anthropic的官方API端点
-- 处理较长上下文窗口
-- 可能需要特殊处理工具调用格式
-
-### Gemini API实现要点
-
-- 支持多模态输入（如图像）
-- 按Google API规范处理鉴权
-- 处理较特殊的流式响应格式
-
-## 五、错误处理
-
-### 通用错误类型
-```dart
-enum ApiErrorType {
-  authError,      // 鉴权错误
-  quotaExceeded,  // 配额超限
-  rateLimit,      // 速率限制
-  invalidRequest, // 无效请求
-  serverError,    // 服务器错误
-  networkError,   // 网络错误
-  unknownError,   // 未知错误
-}
-
-class ApiError {
-  final ApiErrorType type;
-  final String message;
-  final dynamic originalError;
-  
-  ApiError({
-    required this.type,
-    required this.message,
-    this.originalError,
-  });
-}
-```
-
-### 错误处理策略
-- 常见限流错误自动重试
-- 提供用户友好的错误提示
-- 记录详细错误日志以便调试
-
-## 六、扩展性设计
-
-### 添加新API服务商流程
-1. 创建新的API实现类继承自BaseChatAPI
-2. 实现所有需要的方法和属性
-3. 在ApiProvider中注册新的API实现
-4. 在UI中添加对应的选择选项
-
-### 配置自定义端点
-支持配置自定义API端点，便于连接私有部署或代理服务：
-
-```dart
-class ApiConfig {
-  final String apiKey;
-  final String? modelName;
-  final double? temperature;
-  final String? customEndpoint;
-  final Map<String, dynamic>? additionalParams;
-  
-  ApiConfig({
-    required this.apiKey,
-    this.modelName,
-    this.temperature,
-    this.customEndpoint,
-    this.additionalParams,
-  });
-}
-```
-
-## 七、性能考量
-
-### 连接优化
-- 使用HTTP/2支持
-- 保持连接复用
-- 实现超时和重试机制
-
-### 内存管理
-- 流式响应处理避免大字符串拼接
-- 历史消息窗口管理，避免无限增长
-
-## 八、测试方法
-
-### 单元测试
-- 使用Mock服务模拟API响应
-- 测试各种错误场景
-- 验证流式处理正确性
-
-### 集成测试
-- 使用真实API密钥进行完整流程测试
-- 验证不同模型的兼容性
-- 性能和稳定性测试 
+- 支持更多API提供商（例如Baidu ERNIE）
+- 添加API使用统计功能
+- 实现更丰富的API参数设置
+- 增加API速率限制保护
+- 支持流式传输的自定义实现 

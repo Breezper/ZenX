@@ -7,14 +7,41 @@ import 'package:zenx/utils/constants.dart';
 import 'package:zenx/states/settings_provider.dart';
 import 'package:zenx/states/assistant_provider.dart';
 import 'package:zenx/states/chat_provider.dart';
+import 'package:zenx/utils/startup_service.dart';
 
-void main() {
-  runApp(
-    // Enable Riverpod for the entire app
-    const ProviderScope(
-      child: ZenXApp(),
-    ),
-  );
+void main() async {
+  // 确保Flutter初始化完成
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 创建ProviderContainer以便在runApp之前访问providers
+  final container = ProviderContainer();
+  
+  // 初始化启动服务
+  final startupService = StartupService(container);
+  
+  try {
+    // 等待初始化完成
+    print("正在初始化应用...");
+    await startupService.initialize();
+    print("应用初始化完成，准备启动UI");
+    
+    runApp(
+      // Enable Riverpod for the entire app and use the initialized container
+      ProviderScope(
+        parent: container,
+        child: const ZenXApp(),
+      ),
+    );
+  } catch (e) {
+    print("应用初始化失败: $e");
+    // 即使失败也尝试启动应用
+    runApp(
+      ProviderScope(
+        parent: container,
+        child: const ZenXApp(),
+      ),
+    );
+  }
 }
 
 class ZenXApp extends ConsumerWidget {
