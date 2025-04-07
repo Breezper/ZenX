@@ -158,30 +158,33 @@ class SettingsNotifier extends StateNotifier<Settings> {
 
   // Set API configuration with additional metadata
   Future<void> setApiConfig(String provider, String apiKey, {String? baseUrl, String? model, String? displayName, bool? isVisible}) async {
+    // 标准化提供商名称
+    final standardProvider = _standardizeProviderName(provider);
+    
     final updatedApiKeys = Map<String, String>.from(state.apiKeys);
-    updatedApiKeys[provider] = apiKey;
+    updatedApiKeys[standardProvider] = apiKey;
     
     // Save additional metadata if provided
     if (baseUrl != null) {
-      updatedApiKeys['${provider}_url'] = baseUrl;
+      updatedApiKeys['${standardProvider}_url'] = baseUrl;
     }
     
     if (model != null) {
-      updatedApiKeys['${provider}_model'] = model;
+      updatedApiKeys['${standardProvider}_model'] = model;
     }
     
     // Update display name if provided
     Map<String, String>? updatedDisplayNames;
     if (displayName != null) {
       updatedDisplayNames = Map<String, String>.from(state.apiDisplayNames);
-      updatedDisplayNames[provider] = displayName;
+      updatedDisplayNames[standardProvider] = displayName;
     }
     
     // Update visibility if provided
     Map<String, bool>? updatedVisibility;
     if (isVisible != null) {
       updatedVisibility = Map<String, bool>.from(state.apiVisibility);
-      updatedVisibility[provider] = isVisible;
+      updatedVisibility[standardProvider] = isVisible;
     }
     
     state = state.copyWith(
@@ -195,28 +198,40 @@ class SettingsNotifier extends StateNotifier<Settings> {
 
   // Set API display name
   Future<void> setApiDisplayName(String provider, String displayName) async {
+    final standardProvider = _standardizeProviderName(provider);
     final updatedDisplayNames = Map<String, String>.from(state.apiDisplayNames);
-    updatedDisplayNames[provider] = displayName;
+    updatedDisplayNames[standardProvider] = displayName;
     state = state.copyWith(apiDisplayNames: updatedDisplayNames);
     await _saveSettings();
   }
 
   // Set API visibility
   Future<void> setApiVisibility(String provider, bool isVisible) async {
+    final standardProvider = _standardizeProviderName(provider);
     final updatedVisibility = Map<String, bool>.from(state.apiVisibility);
-    updatedVisibility[provider] = isVisible;
+    updatedVisibility[standardProvider] = isVisible;
     state = state.copyWith(apiVisibility: updatedVisibility);
     await _saveSettings();
   }
 
   // Get API display name
   String getApiDisplayName(String provider) {
-    return state.apiDisplayNames[provider] ?? provider.toUpperCase();
+    final standardProvider = _standardizeProviderName(provider);
+    return state.apiDisplayNames[standardProvider] ?? provider.toUpperCase();
   }
 
   // Get API visibility
   bool getApiVisibility(String provider) {
-    return state.apiVisibility[provider] ?? true; // Default is visible
+    final standardProvider = _standardizeProviderName(provider);
+    return state.apiVisibility[standardProvider] ?? true; // Default is visible
+  }
+  
+  // 标准化提供商名称，确保命名一致性
+  String _standardizeProviderName(String provider) {
+    if (provider.toLowerCase() == 'openai-compatible') {
+      return 'openai_compatible';
+    }
+    return provider.toLowerCase();
   }
 
   // Get all visible API providers

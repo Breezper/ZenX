@@ -124,30 +124,13 @@ class SettingsScreen extends ConsumerWidget {
       final config = entry.value;
       
       // 标准化提供商键名以匹配存储的键名
-      String providerKey;
-      if (provider.toLowerCase() == 'openai兼容') {
-        providerKey = 'openai_compatible';
-      } else {
-        providerKey = provider.toLowerCase();
-      }
+      String providerKey = _standardizeProviderName(provider);
       
-      // 获取显示名称 - 先检查完整匹配，再检查不同格式，最后使用默认值
-      String displayName;
-      if (apiDisplayNames.containsKey(providerKey)) {
-        displayName = apiDisplayNames[providerKey]!;
-      } else if (providerKey == 'openai_compatible' && apiDisplayNames.containsKey('openai-compatible')) {
-        displayName = apiDisplayNames['openai-compatible']!;
-      } else {
-        displayName = provider;
-      }
-      
-      // Debug log
-      print("处理API提供商: $provider, 标准化键: $providerKey, 显示名称: $displayName");
+      // 获取显示名称
+      String displayName = apiDisplayNames[providerKey] ?? provider;
       
       // 获取可见性
-      final isVisible = providerKey == 'openai_compatible' ? 
-                      (apiVisibility[providerKey] ?? apiVisibility['openai-compatible'] ?? true) : 
-                      (apiVisibility[providerKey] ?? true);
+      final isVisible = apiVisibility[providerKey] ?? true;
       
       return Card(
         margin: EdgeInsets.only(bottom: 12),
@@ -369,14 +352,11 @@ class SettingsScreen extends ConsumerWidget {
       print("配置信息: API密钥长度: ${config.apiKey.length}, 基础URL: ${config.baseUrl}");
     }
     
-    // Standardize the provider name for OpenAI compatible APIs
-    String displayProvider = provider;
-    
     // 打开API配置页面
     showDialog(
       context: context,
       builder: (context) => ApiConfigDialog(
-        provider: displayProvider,
+        provider: provider,
         config: config,
         onSave: (newConfig) {
           // No need to call settings provider again - it's handled in the dialog
@@ -412,6 +392,14 @@ class SettingsScreen extends ConsumerWidget {
   void _changeTheme(BuildContext context, WidgetRef ref, ThemeMode mode) {
     // 使用状态管理器更新主题
     ref.read(settingsProvider.notifier).setThemeMode(mode);
+  }
+
+  // 标准化提供商名称
+  String _standardizeProviderName(String provider) {
+    if (provider.toLowerCase() == 'openai兼容') {
+      return 'openai_compatible';
+    }
+    return provider.toLowerCase();
   }
 }
 
@@ -449,28 +437,16 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
     
     // Get settings
     final settings = ref.read(settingsProvider);
-    String providerKey = widget.provider.toLowerCase();
     
-    // Handle provider key standardization for OpenAI compatible API
-    if (providerKey == 'openai兼容') {
-      providerKey = 'openai_compatible';
-    }
+    // 标准化提供商键名
+    String providerKey = _standardizeProviderName(widget.provider);
     
     // Debug log
     print('初始化API配置对话框，提供商: ${widget.provider}，标准化键: $providerKey');
     print('API显示名称: ${settings.apiDisplayNames}');
     
     // Get the saved display name for this provider
-    String? savedDisplayName;
-    
-    // Check for display name under both naming conventions for OpenAI compatible
-    if (providerKey == 'openai_compatible') {
-      savedDisplayName = settings.apiDisplayNames['openai_compatible'] ?? 
-                       settings.apiDisplayNames['openai-compatible'];
-      print('找到的OpenAI兼容API显示名称: $savedDisplayName');
-    } else {
-      savedDisplayName = settings.apiDisplayNames[providerKey];
-    }
+    String? savedDisplayName = settings.apiDisplayNames[providerKey];
     
     // Initialize controllers
     _apiKeyController = TextEditingController(
@@ -488,18 +464,20 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
     );
     
     // Get the visibility status
-    if (providerKey == 'openai_compatible') {
-      _isVisible = settings.apiVisibility['openai_compatible'] ?? 
-                 settings.apiVisibility['openai-compatible'] ?? 
-                 true;
-    } else {
-      _isVisible = settings.apiVisibility[providerKey] ?? true;
-    }
+    _isVisible = settings.apiVisibility[providerKey] ?? true;
     
     // 如果是已配置的OpenAI兼容API，尝试获取模型列表
     if (providerKey == 'openai_compatible' && widget.config != null) {
       _fetchModels();
     }
+  }
+  
+  // 标准化提供商名称
+  String _standardizeProviderName(String provider) {
+    if (provider.toLowerCase() == 'openai兼容') {
+      return 'openai_compatible';
+    }
+    return provider.toLowerCase();
   }
 
   String _getDefaultBaseUrl() {
@@ -774,13 +752,10 @@ class _ApiConfigDialogState extends ConsumerState<ApiConfigDialog> {
     final apiKey = _apiKeyController.text.trim();
     final baseUrl = _baseUrlController.text.trim();
     final displayName = _displayNameController.text.trim();
-    final isOpenAICompatible = widget.provider.toLowerCase() == 'openai兼容';
     
-    // Standardize provider key
-    String providerKey = widget.provider.toLowerCase();
-    if (isOpenAICompatible) {
-      providerKey = 'openai_compatible';
-    }
+    // 标准化提供商键名
+    String providerKey = _standardizeProviderName(widget.provider);
+    final isOpenAICompatible = providerKey == 'openai_compatible';
     
     // Get the model name for OpenAI compatible API
     String modelName = _modelController.text.trim();

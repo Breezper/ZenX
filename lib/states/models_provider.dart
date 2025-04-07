@@ -50,8 +50,8 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
     
     // 如果有OpenAI兼容API配置，加载其模型
     if (_hasOpenAICompatibleConfig(apiKeys)) {
-      // 统一使用一个键名格式以避免重复获取模型
-      final standardProvider = apiKeys.containsKey('openai_compatible') ? 'openai_compatible' : 'openai-compatible';
+      // 统一使用一个标准化的键名格式
+      const standardProvider = 'openai_compatible';
       print("初始化模型 - 标准化提供商命名: $standardProvider");
       await fetchModelsForProvider(standardProvider);
     }
@@ -62,13 +62,10 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
   // 检查是否有OpenAI兼容API的配置，支持不同的键名格式
   bool _hasOpenAICompatibleConfig(Map<String, String> apiKeys) {
     // 检查可能的API密钥键名
-    final hasApiKey = apiKeys.containsKey('openai-compatible') || apiKeys.containsKey('openai_compatible');
+    final hasApiKey = apiKeys.containsKey('openai_compatible');
     
     // 检查可能的URL键名
-    final hasBaseUrl = apiKeys.containsKey('openai-compatible_url') || 
-                      apiKeys.containsKey('openai_compatible_url') ||
-                      apiKeys.containsKey('openai-compatible-url') ||
-                      apiKeys.containsKey('openai_compatible-url');
+    final hasBaseUrl = apiKeys.containsKey('openai_compatible_url');
     
     return hasApiKey && hasBaseUrl;
   }
@@ -78,27 +75,17 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
     Map<String, String> config = {};
     
     // 获取API密钥
-    if (apiKeys.containsKey('openai-compatible')) {
-      config['apiKey'] = apiKeys['openai-compatible']!;
-    } else if (apiKeys.containsKey('openai_compatible')) {
+    if (apiKeys.containsKey('openai_compatible')) {
       config['apiKey'] = apiKeys['openai_compatible']!;
     }
     
     // 获取基础URL
-    if (apiKeys.containsKey('openai-compatible_url')) {
-      config['baseUrl'] = apiKeys['openai-compatible_url']!;
-    } else if (apiKeys.containsKey('openai_compatible_url')) {
+    if (apiKeys.containsKey('openai_compatible_url')) {
       config['baseUrl'] = apiKeys['openai_compatible_url']!;
-    } else if (apiKeys.containsKey('openai-compatible-url')) {
-      config['baseUrl'] = apiKeys['openai-compatible-url']!;
-    } else if (apiKeys.containsKey('openai_compatible-url')) {
-      config['baseUrl'] = apiKeys['openai_compatible-url']!;
     }
     
     // 获取模型
-    if (apiKeys.containsKey('openai-compatible_model')) {
-      config['model'] = apiKeys['openai-compatible_model']!;
-    } else if (apiKeys.containsKey('openai_compatible_model')) {
+    if (apiKeys.containsKey('openai_compatible_model')) {
       config['model'] = apiKeys['openai_compatible_model']!;
     } else {
       config['model'] = 'custom-model';
@@ -122,7 +109,7 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
       List<String> models = [];
       
       // 根据提供商类型选择不同的API实现
-      if (standardProvider == 'openai_compatible' || standardProvider == 'openai-compatible') {
+      if (standardProvider == 'openai_compatible') {
         final api = OpenAICompatibleAPI();
         
         // 获取兼容API的配置
@@ -139,14 +126,12 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
         models = await api.fetchModels(config);
         print("获取到的OpenAI兼容API模型: $models");
         
-        // 为两种命名方式都存储模型列表，以确保UI可以在任何情况下访问
+        // 标准化模型存储
         final modelsList = Map<String, List<String>>.from(state.modelsByProvider);
         modelsList['openai_compatible'] = models;
-        modelsList['openai-compatible'] = models;
         
         // 更新加载状态
         loadingState['openai_compatible'] = false;
-        loadingState['openai-compatible'] = false;
         
         state = state.copyWith(
           modelsByProvider: modelsList,
@@ -174,13 +159,7 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
       print("获取模型出错: $e");
       // 出错时重置加载状态
       final loadingState = Map<String, bool>.from(state.isLoadingByProvider);
-      
-      if (standardProvider == 'openai_compatible' || standardProvider == 'openai-compatible') {
-        loadingState['openai_compatible'] = false;
-        loadingState['openai-compatible'] = false;
-      } else {
-        loadingState[standardProvider] = false;
-      }
+      loadingState[standardProvider] = false;
       
       state = state.copyWith(isLoadingByProvider: loadingState);
       
@@ -203,8 +182,8 @@ class ApiModelsNotifier extends StateNotifier<ApiModelsState> {
   
   // 标准化提供商名称，处理命名不一致问题
   String _standardizeProviderName(String provider) {
-    if (provider == 'openai-compatible' || provider == 'openai_compatible') {
-      // 优先使用下划线版本
+    if (provider == 'openai-compatible') {
+      // 统一使用下划线格式
       return 'openai_compatible';
     }
     return provider;
