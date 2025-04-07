@@ -20,8 +20,28 @@ ZenX支持多种AI服务提供商的API集成，包括：
 - `ApiService`: 管理和提供各种API实现的服务类
 - `ApiConfig`: API配置数据模型
 - `SettingsProvider`: 存储和管理API配置的状态提供者
+- `ApiUtils`: 提供API名称标准化和配置验证的工具类
+- `ModelsProvider`: 管理和缓存各提供商的模型列表
 
-### 2.2 API数据流
+### 2.2 API组件化设计
+
+API集成在UI层采用了组件化设计，主要包括：
+
+- `ApiProviderDropdown`: API提供商选择组件
+- `ModelDropdown`: 模型选择组件
+- `SettingsWarning`: API配置问题警告组件
+
+这些组件通过状态提供者与后端API服务连接：
+
+```
+┌───────────────┐       ┌───────────────┐       ┌───────────────┐
+│               │       │               │       │               │
+│ API UI组件     │ ────> │ 状态提供者     │ ────> │  ApiService   │
+│               │       │               │       │               │
+└───────────────┘       └───────────────┘       └───────────────┘
+```
+
+### 2.3 API数据流
 
 ```
 ┌───────────────┐       ┌───────────────┐       ┌───────────────┐
@@ -67,7 +87,36 @@ ZenX支持多种AI服务提供商的API集成，包括：
 
 ## 4. 自定义API支持
 
-### 4.1 添加自定义API
+### 4.1 API工具类
+
+`ApiUtils`类提供了以下核心功能：
+
+```dart
+class ApiUtils {
+  // 标准化API提供商名称（处理命名不一致问题）
+  static String standardizeProviderName(String provider);
+  
+  // 获取正确的API密钥名称
+  static String getApiKeyName(String provider);
+  
+  // 获取正确的API URL键名
+  static String getUrlKeyName(String provider);
+  
+  // 验证API配置的有效性
+  static bool hasValidApiConfig(String provider, Map<String, String> apiKeys);
+  
+  // 智能获取模型列表（仅在必要时）
+  static void fetchModelsForProviderIfNeeded(String provider, WidgetRef ref);
+}
+```
+
+API工具类解决的主要问题：
+- 处理不同API命名格式的不一致性（如 openai-compatible 和 openai_compatible）
+- 简化跨平台API键名管理
+- 集中式API配置验证
+- 优化模型获取，避免不必要的API调用
+
+### 4.2 添加自定义API
 
 用户可以通过以下步骤添加自定义API：
 
@@ -76,7 +125,7 @@ ZenX支持多种AI服务提供商的API集成，包括：
 3. 设置API密钥和基础URL
 4. 对于OpenAI兼容API，可选择获取可用模型
 
-### 4.2 自定义API实现
+### 4.3 自定义API实现
 
 `CustomAPI`类提供了通用的实现，支持：
 
@@ -84,13 +133,13 @@ ZenX支持多种AI服务提供商的API集成，包括：
 - 简化的聊天消息格式
 - 灵活的请求/响应处理
 
-### 4.3 自定义API注册
+### 4.4 自定义API注册
 
 1. 应用启动时，通过`StartupService`初始化所有自定义API
 2. 每个自定义API都会被注册到`ApiService`
 3. 注册的API可以与内置API一样被调用和使用
 
-### 4.4 自定义API数据存储
+### 4.5 自定义API数据存储
 
 - API密钥通过`flutter_secure_storage`安全存储
 - API配置保存在`SettingsProvider`中

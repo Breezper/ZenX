@@ -12,6 +12,7 @@ class CustomAPI extends BaseChatAPI {
   final String _name;
   final Color _brandColor;
   final List<String> _supportedModels;
+  late final DeepSeekAPI _deepSeekAPI = DeepSeekAPI();
   
   CustomAPI({
     required String name,
@@ -31,6 +32,11 @@ class CustomAPI extends BaseChatAPI {
   @override
   List<String> get supportedModels => _supportedModels;
   
+  /// 检查是否是DeepSeek API
+  bool _isDeepSeek(String provider) {
+    return provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek';
+  }
+  
   @override
   Future<bool> validateApiKey(String apiKey) async {
     print("CustomAPI.validateApiKey - API名称: $_name, 密钥长度: ${apiKey.length}");
@@ -41,9 +47,8 @@ class CustomAPI extends BaseChatAPI {
     }
     
     // 如果是DeepSeek API，使用专用实现
-    if (_name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.validateApiKey(apiKey);
+    if (_isDeepSeek(_name)) {
+      return _deepSeekAPI.validateApiKey(apiKey);
     }
     
     // 对于自定义API，我们简化验证，总是返回true
@@ -59,9 +64,8 @@ class CustomAPI extends BaseChatAPI {
     required ApiConfig config,
   }) async {
     // 如果是DeepSeek API，使用专用实现
-    if (config.provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.sendMessage(message: message, history: history, config: config);
+    if (_isDeepSeek(config.provider)) {
+      return _deepSeekAPI.sendMessage(message: message, history: history, config: config);
     }
     
     final streamController = StreamController<String>();
@@ -99,7 +103,6 @@ class CustomAPI extends BaseChatAPI {
       final utf8Decoder = Utf8Decoder();
       
       // 缓存接收到的消息片段
-      String fullContent = '';
       String buffer = '';
       
       // 处理流式响应
@@ -154,10 +157,9 @@ class CustomAPI extends BaseChatAPI {
                     }
                     
                     if (content.isNotEmpty) {
-                      // 添加到完整内容中
-                      fullContent += content;
-                      // 发送完整内容
-                      streamController.add(fullContent);
+                      // 只发送增量部分，不累积内容
+                      print("发送增量更新: $content");
+                      streamController.add(content);
                     }
                   }
                 } catch (e) {
@@ -170,7 +172,7 @@ class CustomAPI extends BaseChatAPI {
           }
         },
         onDone: () {
-          print("流式响应完成，完整内容: $fullContent");
+          print("流式响应完成");
           if (!streamController.isClosed) {
             streamController.close();
           }
@@ -202,9 +204,8 @@ class CustomAPI extends BaseChatAPI {
     ApiConfig config,
   ) {
     // 如果是DeepSeek API，使用专用实现
-    if (config.provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.prepareRequestBody(message, history, config);
+    if (_isDeepSeek(config.provider)) {
+      return _deepSeekAPI.prepareRequestBody(message, history, config);
     }
     
     // 转换历史消息为OpenAI兼容格式
@@ -250,9 +251,8 @@ class CustomAPI extends BaseChatAPI {
   // 获取API支持的模型列表
   Future<List<String>> fetchModels(ApiConfig config) async {
     // 如果是DeepSeek API，使用专用实现
-    if (config.provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.fetchModels(config);
+    if (_isDeepSeek(config.provider)) {
+      return _deepSeekAPI.fetchModels(config);
     }
     
     // 非DeepSeek API的处理逻辑
@@ -292,9 +292,8 @@ class CustomAPI extends BaseChatAPI {
   // 验证API配置
   Future<bool> validateConfig(ApiConfig config) async {
     // 如果是DeepSeek API，使用专用实现
-    if (config.provider.toLowerCase() == 'deepseek' || _name.toLowerCase() == 'deepseek') {
-      final deepSeekApi = DeepSeekAPI();
-      return deepSeekApi.validateConfig(config);
+    if (_isDeepSeek(config.provider)) {
+      return _deepSeekAPI.validateConfig(config);
     }
     
     // 普通API验证

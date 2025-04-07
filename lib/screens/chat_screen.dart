@@ -218,18 +218,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
     
+    // 创建一个空的AI回复消息
+    final aiMessage = Message(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      content: '',
+      isUser: false,
+      timestamp: DateTime.now(),
+    );
+    
+    // 添加到消息列表
+    addMessage(ref, aiMessage);
+    
     try {
-      // 创建一个空的AI回复消息
-      final aiMessage = Message(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        content: '',
-        isUser: false,
-        timestamp: DateTime.now(),
-      );
-      
-      // 添加到消息列表
-      addMessage(ref, aiMessage);
-      
       // 发送请求到API
       final response = await _apiService.sendMessage(
         message: text,
@@ -239,6 +239,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       
       // 处理流式响应
       String fullContent = '';
+      bool hasError = false;
       
       response.textStream.listen(
         (chunk) {
@@ -263,6 +264,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
         },
         onDone: () {
+          // 检查是否在完成前已经有错误处理
+          if (hasError) return;
+          
           // 先确保消息内容已更新
           final messages = ref.read(currentMessagesProvider);
           final index = messages.indexWhere((m) => m.id == aiMessage.id);
@@ -290,6 +294,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
         },
         onError: (error) {
+          hasError = true;
+          print("流响应错误捕获: $error");
+          
+          // 确保关闭输入状态
           ref.read(isTypingProvider.notifier).state = false;
           
           final messages = ref.read(currentMessagesProvider);
@@ -301,20 +309,76 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               content: '发生错误: $error',
             );
             ref.read(currentMessagesProvider.notifier).state = updatedMessages;
+            
+            // 确保保存会话
+            saveCurrentSession(ref);
+            
+            // 自动滚动到底部
+            _scrollToBottom();
           }
         },
       );
+      
+      // 针对API服务的特殊处理，检查流是否为空（表示可能发生了错误但未正确传播）
+      // 设置一个10秒超时，如果10秒内没有收到任何内容，认为是出错了
+      Future.delayed(Duration(seconds: 10), () {
+        if (fullContent.isEmpty && !hasError) {
+          print("API响应超时，未收到任何内容，可能是API错误未正确传播");
+          
+          // 确保关闭输入状态
+          ref.read(isTypingProvider.notifier).state = false;
+          
+          final messages = ref.read(currentMessagesProvider);
+          final index = messages.indexWhere((m) => m.id == aiMessage.id);
+          
+          if (index != -1) {
+            final updatedMessages = [...messages];
+            updatedMessages[index] = messages[index].copyWith(
+              content: '发生错误: API响应超时，请检查API密钥或网络连接',
+            );
+            ref.read(currentMessagesProvider.notifier).state = updatedMessages;
+            
+            // 确保保存会话
+            saveCurrentSession(ref);
+          }
+        }
+      });
+      
     } catch (e) {
+      print("捕获到API调用异常: $e");
+      
+      // 确保关闭输入状态
       ref.read(isTypingProvider.notifier).state = false;
       
-      // 添加错误消息
-      final errorMessage = Message(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        content: '发生错误: $e',
-        isUser: false,
-        timestamp: DateTime.now(),
-      );
-      addMessage(ref, errorMessage);
+      // 检查是否已经添加了AI消息
+      final messages = ref.read(currentMessagesProvider);
+      final index = messages.indexWhere((m) => m.id == aiMessage.id);
+      
+      if (index != -1) {
+        // 更新已有的AI消息内容为错误信息
+        final updatedMessages = [...messages];
+        updatedMessages[index] = messages[index].copyWith(
+          content: '发生错误: $e',
+        );
+        ref.read(currentMessagesProvider.notifier).state = updatedMessages;
+      } else {
+        // 添加新的错误消息
+        final errorMessage = Message(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          content: '发生错误: $e',
+          isUser: false,
+          timestamp: DateTime.now(),
+        );
+        addMessage(ref, errorMessage);
+      }
+      
+      // 确保保存会话
+      saveCurrentSession(ref);
+      
+      // 自动滚动到底部
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
     }
   }
   

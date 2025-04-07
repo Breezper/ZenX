@@ -4,6 +4,7 @@ import 'package:zenx/api/openai_api.dart';
 import 'package:zenx/api/openai_compatible_api.dart';
 import 'package:zenx/api/custom_api.dart';
 import 'package:zenx/api/deepseek_api.dart';
+import 'package:zenx/api/claude_api.dart';
 import 'package:zenx/models/api_config.dart';
 
 /// API服务类，管理和提供各种API实现
@@ -23,6 +24,8 @@ class ApiService {
     'openai_compatible': OpenAICompatibleAPI(),
     'openai-compatible': OpenAICompatibleAPI(), // 添加连字符版本
     'deepseek': DeepSeekAPI(), // 使用专用DeepSeek API实现
+    'claude': ClaudeAPI(), // 使用新的Claude API实现
+    'anthropic': ClaudeAPI(), // 添加Anthropic作为别名
   };
   
   /// 注册自定义API提供商
@@ -97,7 +100,17 @@ class ApiService {
     // 打印调试信息
     print("获取API实现: 原始提供商=$provider, 标准化后=$normalizedProvider");
     
-    return _apis[normalizedProvider];
+    // 检查是否存在已注册的API实现
+    BaseChatAPI? api = _apis[normalizedProvider];
+    
+    // 如果没有找到已注册的API实现，则自动创建一个CustomAPI实例
+    if (api == null) {
+      print("未找到提供商 $normalizedProvider 的API实现，创建自定义API实现");
+      api = CustomAPI(name: provider);
+      _apis[normalizedProvider] = api;
+    }
+    
+    return api;
   }
   
   /// 获取所有支持的API提供商
@@ -170,8 +183,9 @@ class ApiService {
     
     try {
       final api = getApi(config.provider);
+      // 虽然getApi方法现在总是返回一个API实现，但仍保留null检查以确保代码安全
       if (api == null) {
-        final error = '不支持的API提供商: ${config.provider}';
+        final error = '无法创建API实现: ${config.provider}';
         print(error);
         streamController.addError(error);
         streamController.close();
@@ -179,7 +193,7 @@ class ApiService {
       }
       
       // 打印更多调试信息
-      print("找到API实现: ${api.vendorName}, 使用模型: ${config.model ?? '未指定'}");
+      print("使用API实现: ${api.vendorName}, 使用模型: ${config.model ?? '未指定'}");
       
       try {
         // 使用特定API实现发送消息

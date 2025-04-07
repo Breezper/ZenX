@@ -41,12 +41,18 @@
 │   │   ├── chat_bubble.dart  # 消息气泡
 │   │   ├── message_input.dart # 消息输入栏
 │   │   ├── assistant_item.dart # 助手选择项
-│   │   └── typing_indicator.dart # 打字动画效果
+│   │   ├── typing_indicator.dart # 打字动画效果
+│   │   ├── api_provider_dropdown.dart # API提供商下拉选择器
+│   │   ├── model_dropdown.dart # 模型下拉选择器
+│   │   ├── context_length_slider.dart # 上下文长度滑块
+│   │   ├── system_prompt_field.dart # 系统提示词输入框
+│   │   └── settings_warning.dart # 设置警告和信息提示
 │   ├── 📂 api              # API接口层
 │   │   ├── base_chat_api.dart # 抽象接口
 │   │   ├── openai_api.dart 
 │   │   ├── gemini_api.dart
 │   │   ├── claude_api.dart
+│   │   ├── openai_compatible_api.dart # OpenAI兼容API
 │   │   └── custom_api.dart   # 通用自定义API实现
 │   ├── 📂 models          # 数据模型
 │   │   ├── message.dart    # 消息对象
@@ -56,6 +62,7 @@
 │   ├── 📂 states          # 状态管理
 │   │   ├── chat_provider.dart # 聊天状态管理
 │   │   ├── assistant_provider.dart # 助手角色状态管理
+│   │   ├── models_provider.dart # 模型列表管理
 │   │   └── settings_provider.dart # 用户设置
 │   ├── 📂 screens         # 页面层
 │   │   ├── chat_screen.dart # 主聊天界面
@@ -74,6 +81,28 @@
 - **网络请求：** Dio（支持请求拦截和流式响应）
 - **本地存储：** Hive/SQLite（轻量级键值对存储）
 - **安全存储：** flutter_secure_storage（API密钥加密存储）
+
+### 组件化架构设计
+项目采用组件化架构设计，主要遵循以下原则：
+1. **单一职责原则**：每个组件只负责一个特定功能
+2. **高内聚低耦合**：组件内部逻辑紧密相关，组件之间保持低耦合
+3. **可复用性**：设计通用组件以便在多处复用
+4. **易测试性**：组件应易于单独测试
+5. **状态分离**：UI组件与状态管理分离
+
+右侧抽屉设置面板的组件化示例：
+- ApiProviderDropdown：负责API提供商选择
+- ModelDropdown：负责模型选择
+- ContextLengthSlider：负责上下文长度设置
+- SystemPromptField：负责系统提示词输入
+- SettingsWarning/SettingsInfo：负责警告和提示信息展示
+
+组件化带来的优势：
+- 代码更易于维护
+- 功能更容易测试
+- 更好的代码组织和可读性
+- 便于团队协作开发
+- 简化复杂界面的构建
 
 ### 核心数据模型
 
@@ -206,9 +235,12 @@ class ChatSession {
    - 历史记录列表项
 
 3. **右侧抽屉组件**
-   - 模型参数设置
-   - 系统提示词编辑
-   - 应用按钮
+   - API提供商选择组件（ApiProviderDropdown）
+   - 模型选择组件（ModelDropdown）
+   - 上下文长度滑块组件（ContextLengthSlider）
+   - 系统提示词输入组件（SystemPromptField）
+   - 设置警告与提示组件（SettingsWarning/SettingsInfo）
+   - 抽屉主框架（RightSettingsDrawer）
 
 4. **消息组件**
    - 消息气泡
@@ -263,6 +295,33 @@ dependencies:
 ``` 
 
 ## 十一、自定义API支持
+
+### API工具类（ApiUtils）
+新增API工具类提供以下功能：
+- 标准化API提供商命名（处理命名不一致问题）
+- 获取API密钥和URL的正确键名
+- 检查API配置的有效性
+- 智能获取模型列表（仅在必要时）
+
+```dart
+// ApiUtils类关键方法
+class ApiUtils {
+  // 标准化API提供商名称
+  static String standardizeProviderName(String provider)
+  
+  // 获取API密钥名称
+  static String getApiKeyName(String provider)
+  
+  // 获取URL键名
+  static String getUrlKeyName(String provider)
+  
+  // 检查API配置是否有效
+  static bool hasValidApiConfig(String provider, Map<String, String> apiKeys)
+  
+  // 按需获取模型列表
+  static void fetchModelsForProviderIfNeeded(String provider, WidgetRef ref)
+}
+```
 
 ### 自定义API数据流
 ```
